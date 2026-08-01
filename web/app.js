@@ -8,78 +8,145 @@ let state = { codex: null, deepseek: null, receivedAt: null };
 const canvas = document.querySelector('#dashboard');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-const fmt = value => {
-  if (value == null || Number.isNaN(Number(value))) return '—';
-  const n = Number(value);
+const valueOf = item => {
+  if (item == null) return null;
+  const value = typeof item === 'number' ? item : item.value;
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+};
+const fmtTokens = value => {
+  const n = valueOf(value);
+  if (n == null) return '—';
   if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
   if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(n);
+  return Math.round(n).toLocaleString();
 };
-const metric = item => item?.text || fmt(item?.value);
+const fmtMoney = value => {
+  const n = valueOf(value);
+  return n == null ? '—' : `¥${n.toFixed(2)}`;
+};
+const fmtPercent = value => {
+  const n = valueOf(value);
+  return n == null ? '—' : `${Math.max(0, Math.min(100, n)).toFixed(n % 1 ? 1 : 0)}%`;
+};
+const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
-function box(x, y, w, h, line = 2) { ctx.lineWidth = line; ctx.strokeRect(x, y, w, h); }
+function box(x, y, w, h, line = 2) {
+  ctx.lineWidth = line;
+  ctx.strokeRect(x, y, w, h);
+}
+function line(x1, y1, x2, y2, width = 1) {
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
 function text(value, x, y, size = 16, bold = false, align = 'left') {
   ctx.font = `${bold ? 800 : 400} ${size}px system-ui,"Microsoft YaHei",sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = 'top';
   ctx.fillText(String(value), x, y);
 }
+function progressBar(x, y, w, h, ratio, outline = 2) {
+  box(x, y, w, h, outline);
+  const inner = Math.max(0, w - 8);
+  ctx.fillRect(x + 4, y + 4, Math.round(inner * clamp(ratio)), Math.max(1, h - 8));
+}
+function sectionTitle(title, subtitle, y) {
+  text(title, 28, y, 22, true);
+  text(subtitle, 572, y + 5, 12, false, 'right');
+}
+function statColumn(label, value, x, y, align = 'left') {
+  text(label, x, y, 12, false, align);
+  text(value, x, y + 20, 25, true, align);
+}
+
+function deepSeekModel(data, name) {
+  const raw = data?.[name] || {};
+  return {
+    tokens: valueOf(raw.tokens),
+    cost: valueOf(raw.cost),
+    cacheHitTokens: valueOf(raw.cacheHitTokens),
+    cacheMissTokens: valueOf(raw.cacheMissTokens)
+  };
+}
+
+function drawModelRow(y, label, model, tokenScale) {
+  box(28, y, 544, 73, 2);
+  text(label, 42, y + 10, 18, true);
+  text(fmtTokens(model.tokens), 42, y + 34, 25, true);
+  text('tokens', 143, y + 43, 11);
+  text(fmtMoney(model.cost), 555, y + 13, 22, true, 'right');
+  text('今日费用', 555, y + 41, 11, false, 'right');
+  const ratio = model.tokens == null || tokenScale <= 0 ? 0 : model.tokens / tokenScale;
+  progressBar(205, y + 43, 230, 16, ratio, 1);
+}
 
 function render() {
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 600, 800);
-  ctx.fillStyle = '#000'; ctx.strokeStyle = '#000';
-  text('AI 用量', 24, 18, 36, true);
-  text(`更新 ${new Date().toLocaleString()}`, 576, 24, 13, false, 'right');
-  ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(24, 72); ctx.lineTo(576, 72); ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 600, 800);
+  ctx.fillStyle = '#000';
+  ctx.strokeStyle = '#000';
 
-  text('Codex', 24, 88, 23, true);
-  text('Web Analytics', 576, 94, 13, false, 'right');
-  box(24, 122, 552, 145, 3);
+  text('AI 用量', 28, 17, 34, true);
+  text(`更新 ${new Date().toLocaleString()}`, 572, 25, 11, false, 'right');
+  line(28, 69, 572, 69, 4);
+
+  sectionTitle('Codex', 'Web Analytics', 84);
+  box(28, 116, 544, 132, 2);
   const quotas = state.codex?.quotas || [];
   const weekly = quotas.find(q => q.id === 'weekly') || quotas[0];
   if (weekly) {
-    const remaining = Math.max(0, Math.min(100, Number(weekly.remainingPercent ?? weekly.displayedPercent ?? 0)));
-    text('本周额度剩余', 40, 139, 18, true);
-    text(`${remaining}%`, 559, 135, 49, true, 'right');
-    box(40, 194, 520, 31, 3);
-    ctx.fillRect(45, 199, Math.round(510 * remaining / 100), 21);
-    text(`剩余 ${remaining}%`, 40, 231, 13);
-    text(`已用 ${weekly.usedPercent ?? 100 - remaining}%`, 560, 231, 13, false, 'right');
-    ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(40, 252); ctx.lineTo(560, 252); ctx.stroke();
-    text(`重置：${weekly.resetText || '未知'}`, 40, 256, 14);
+    const remaining = clamp(Number(weekly.remainingPercent ?? weekly.displayedPercent ?? 0), 0, 100);
+    text('本周额度剩余', 42, 132, 15, true);
+    text(`${Math.round(remaining)}%`, 555, 124, 42, true, 'right');
+    progressBar(42, 177, 516, 27, remaining / 100, 2);
+    text(`剩余 ${Math.round(remaining)}%`, 42, 211, 11);
+    text(`已用 ${Math.round(weekly.usedPercent ?? 100 - remaining)}%`, 558, 211, 11, false, 'right');
+    line(42, 229, 558, 229, 1);
+    text(`重置：${weekly.resetText || '未知'}`, 42, 232, 11);
   } else {
-    text('尚未采集，请打开 Codex Analytics', 40, 165, 18, true);
+    text('尚未采集', 42, 151, 23, true);
+    text('打开 Codex Analytics 后点击“同步到 Kindle”', 42, 189, 12);
   }
 
-  text('DeepSeek API', 24, 291, 23, true);
-  text('Platform', 576, 297, 13, false, 'right');
-  box(24, 326, 552, 71, 3);
-  text('账户余额', 39, 339, 17, true);
-  text('来自已登录的 Platform 页面', 39, 368, 12);
-  text(metric(state.deepseek?.balance), 560, 342, 34, true, 'right');
-  const cards = [
-    [24, 408, '今日消耗', metric(state.deepseek?.todayCost), `${metric(state.deepseek?.todayTokens)} tokens`],
-    [305, 408, '本月消耗', metric(state.deepseek?.monthCost), `${metric(state.deepseek?.monthTokens)} tokens`],
-    [24, 522, '今日 Token', metric(state.deepseek?.todayTokens), '来自 Usage 页面'],
-    [305, 522, '缓存命中率', metric(state.deepseek?.cacheRate), '未显示则为 —']
-  ];
-  for (const [x, y, title, value, sub] of cards) {
-    box(x, y, 271, 104, 2);
-    text(title, x + 13, y + 11, 15, true);
-    text(value, x + 13, y + 38, 28, true);
-    text(sub, x + 13, y + 80, 12);
-  }
-  box(24, 637, 552, 92, 2);
-  text('采集状态', 36, 647, 15, true);
-  ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(24, 675); ctx.lineTo(576, 675); ctx.stroke();
-  text(`Codex：${state.codex?.capturedAt ? new Date(state.codex.capturedAt).toLocaleString() : '未连接'}`, 36, 686, 13);
-  text(`DeepSeek：${state.deepseek?.capturedAt ? new Date(state.deepseek.capturedAt).toLocaleString() : '未连接'}`, 36, 712, 13);
-  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(24, 750); ctx.lineTo(576, 750); ctx.stroke();
-  box(24, 764, 48, 24, 1);
-  text('AUTO', 48, 769, 12, true, 'center');
-  text('每 10 分钟采集', 82, 767, 12);
-  text('离线保留最后画面', 576, 767, 12, false, 'right');
+  const ds = state.deepseek || {};
+  const flash = deepSeekModel(ds, 'flash');
+  const pro = deepSeekModel(ds, 'pro');
+  const todayTokens = valueOf(ds.todayTokens) ?? ((flash.tokens || 0) + (pro.tokens || 0) || null);
+  const todayCost = valueOf(ds.todayCost) ?? ((flash.cost || 0) + (pro.cost || 0) || null);
+  const cacheRate = valueOf(ds.cacheRate);
+  const tokenScale = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
+
+  sectionTitle('DeepSeek API', '今日用量', 270);
+  box(28, 302, 544, 74, 2);
+  statColumn('账户余额', fmtMoney(ds.balance), 42, 314);
+  statColumn('今日费用', fmtMoney(todayCost), 300, 314, 'center');
+  statColumn('今日 Token', fmtTokens(todayTokens), 558, 314, 'right');
+  line(200, 312, 200, 366, 1);
+  line(400, 312, 400, 366, 1);
+
+  drawModelRow(390, 'V4 Flash', flash, tokenScale);
+  drawModelRow(474, 'V4 Pro', pro, tokenScale);
+
+  box(28, 558, 544, 82, 2);
+  text('缓存命中率', 42, 571, 16, true);
+  text(fmtPercent(cacheRate), 558, 566, 30, true, 'right');
+  progressBar(42, 607, 516, 22, cacheRate == null ? 0 : cacheRate / 100, 2);
+
+  box(28, 655, 544, 69, 1);
+  text('采集状态', 42, 666, 13, true);
+  const codexTime = state.codex?.capturedAt ? new Date(state.codex.capturedAt).toLocaleTimeString() : '未连接';
+  const deepseekTime = ds.capturedAt ? new Date(ds.capturedAt).toLocaleTimeString() : '未连接';
+  text(`Codex ${codexTime}`, 42, 692, 11);
+  text(`DeepSeek ${deepseekTime}`, 558, 692, 11, false, 'right');
+
+  line(28, 744, 572, 744, 3);
+  box(28, 760, 48, 21, 1);
+  text('AUTO', 52, 764, 11, true, 'center');
+  text('每 10 分钟同步', 86, 763, 11);
+  text('600×800 · 8 位灰度 PNG', 572, 763, 11, false, 'right');
 }
 
 async function publish() {
@@ -94,7 +161,9 @@ async function publish() {
 function updateUi() {
   document.querySelector('#codex-status').textContent = state.codex ? JSON.stringify(state.codex, null, 2) : '尚未采集';
   document.querySelector('#deepseek-status').textContent = state.deepseek ? JSON.stringify(state.deepseek, null, 2) : '尚未采集';
-  publish().catch(error => { document.querySelector('#service').textContent = `生成失败：${error.message}`; });
+  publish().catch(error => {
+    document.querySelector('#service').textContent = `生成失败：${error.message}`;
+  });
 }
 
 async function load() {
@@ -108,7 +177,10 @@ async function load() {
   document.querySelector('#url').textContent = url;
   document.querySelector('#service').textContent = '后台服务已运行';
   updateUi();
-  await listen('metrics-updated', event => { state = event.payload; updateUi(); });
+  await listen('metrics-updated', event => {
+    state = event.payload;
+    updateUi();
+  });
 }
 
 function openInCurrentWebview(url) {
