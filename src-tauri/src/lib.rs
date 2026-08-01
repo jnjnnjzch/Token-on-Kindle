@@ -440,6 +440,8 @@ pub fn run() {
                 .title("Token on Kindle")
                 .inner_size(1080.0, 760.0)
                 .min_inner_size(760.0, 580.0)
+                .initialization_script(EXTRACTOR_SCRIPT)
+                .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
