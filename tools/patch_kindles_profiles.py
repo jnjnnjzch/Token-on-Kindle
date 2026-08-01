@@ -84,3 +84,4 @@ if old not in source:
 
 path.write_text(source.replace(old, new, 1), encoding="utf-8")
 print("Patched src-tauri/src/lib.rs for native Kindle profiles")
+# Touching this file after the workflow exists triggers the one-shot branch patch.
