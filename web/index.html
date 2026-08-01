@@ -7,20 +7,71 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main>
-    <header><div><h1>Token on Kindle</h1><p>Codex / DeepSeek Kindle 锁屏看板</p></div><span id="service">启动中…</span></header>
-    <section class="actions">
-      <button id="open-codex">登录 / 打开 Codex Analytics</button>
-      <button id="open-deepseek">登录 / 打开 DeepSeek Platform</button>
-      <button id="refresh">重新生成锁屏图</button>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span></div>
+        <div>
+          <h1>Token on Kindle</h1>
+          <p>Codex 与 DeepSeek 的电子墨水用量看板</p>
+        </div>
+      </div>
+      <div id="service" class="service-pill">正在启动后台服务…</div>
+    </header>
+
+    <section class="toolbar" aria-label="数据源控制">
+      <button id="open-codex" class="source-button">
+        <span class="button-kicker">CODEX</span>
+        <span>登录或查看额度</span>
+      </button>
+      <button id="open-deepseek" class="source-button">
+        <span class="button-kicker">DEEPSEEK</span>
+        <span>登录或查看用量</span>
+      </button>
+      <button id="refresh" class="refresh-button">立即刷新用量</button>
     </section>
-    <section class="status-grid">
-      <article><h2>Codex</h2><pre id="codex-status">尚未采集</pre></article>
-      <article><h2>DeepSeek</h2><pre id="deepseek-status">尚未采集</pre></article>
-    </section>
-    <section class="preview-wrap">
-      <div><h2>Kindle 预览</h2><p>固定输出：600×800、8 位灰度真 PNG</p><canvas id="dashboard" width="600" height="800"></canvas></div>
-      <aside><h2>Online Screensaver 地址</h2><code id="url">读取中…</code><p>把此地址填入 Kindle 插件的 <code>IMAGE_URI</code>。</p><button id="copy">复制地址</button><h2>说明</h2><p>桌面端可缩小到托盘。Android 首版需保持应用前台，后续增加前台服务。</p></aside>
+
+    <section class="workspace">
+      <article class="panel preview-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">KINDLE PREVIEW</span>
+            <h2>锁屏预览</h2>
+          </div>
+          <div class="format-note">600 × 800 · 8 位灰度 PNG</div>
+        </div>
+        <div class="preview-stage">
+          <div class="kindle-frame">
+            <canvas id="dashboard" width="600" height="800"></canvas>
+          </div>
+        </div>
+      </article>
+
+      <aside class="side-column">
+        <section class="panel connection-panel">
+          <span class="eyebrow">ONLINE SCREENSAVER</span>
+          <h2>Kindle 图片地址</h2>
+          <div class="url-box"><code id="url">正在读取局域网地址…</code></div>
+          <button id="copy" class="copy-button">复制地址</button>
+          <p class="help-text">将地址填入 Online Screensaver 的 <code>IMAGE_URI</code>。电脑与 Kindle 需要连接同一局域网。</p>
+        </section>
+
+        <section class="panel schedule-panel">
+          <span class="eyebrow">BACKGROUND SYNC</span>
+          <h2>自动更新</h2>
+          <div class="schedule-row"><strong>10 分钟</strong><span>刷新一次 Codex 与 DeepSeek</span></div>
+          <div class="schedule-row"><strong>常驻</strong><span>关闭窗口后继续在托盘运行</span></div>
+          <div class="schedule-row"><strong>安全区</strong><span>底部黑带用于显示白色“滑动以解锁”</span></div>
+        </section>
+
+        <details class="panel debug-panel">
+          <summary>查看采集详情</summary>
+          <div class="status-grid">
+            <article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article>
+            <article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article>
+          </div>
+        </details>
+      </aside>
     </section>
   </main>
   <script type="module" src="app.js"></script>
