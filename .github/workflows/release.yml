@@ -51,7 +51,8 @@ jobs:
           elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
             version='${{ github.ref_name }}'
           else
-            version="v$(node -p \"require('./package.json').version\")"
+            package_version=$(node -p "require('./package.json').version")
+            version="v${package_version}"
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
             echo "Version must look like v0.3.0; got $version" >&2
