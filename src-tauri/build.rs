@@ -1,5 +1,8 @@
 use std::{env, fs, path::PathBuf};
 
+// A compact 32×32 RGBA PNG wrapped in a single-image ICO container. Keeping the
+// bytes in the build script makes clean checkouts buildable on every runner
+// without committing binary font or icon assets through the text-only connector.
 const ICON_ICO: &[u8] = &[
     0x00,0x00,0x01,0x00,0x01,0x00,0x20,0x20,0x00,0x00,0x00,0x00,0x20,0x00,0xaf,0x00,
     0x00,0x00,0x16,0x00,0x00,0x00,0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,
@@ -15,18 +18,25 @@ const ICON_ICO: &[u8] = &[
     0x80,0x07,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
 ];
 
-fn ensure_windows_icon() {
+fn ensure_icons() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let icon_dir = manifest.join("icons");
-    let icon_path = icon_dir.join("icon.ico");
     fs::create_dir_all(&icon_dir).expect("create icons directory");
-    if !icon_path.exists() {
-        fs::write(icon_path, ICON_ICO).expect("write generated icon.ico");
+
+    let ico_path = icon_dir.join("icon.ico");
+    if !ico_path.exists() {
+        fs::write(ico_path, ICON_ICO).expect("write generated icon.ico");
+    }
+
+    // The ICO directory and entry occupy 22 bytes; its payload is a complete PNG.
+    let png_path = icon_dir.join("icon.png");
+    if !png_path.exists() {
+        fs::write(png_path, &ICON_ICO[22..]).expect("write generated icon.png");
     }
 }
 
 fn main() {
     println!("cargo:rerun-if-changed=../web/extractor.js");
-    ensure_windows_icon();
+    ensure_icons();
     tauri_build::build()
 }
