@@ -1,6 +1,6 @@
 const GITHUB_LATEST_RELEASE = 'https://api.github.com/repos/jnjnnjzch/Token-on-Kindle/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
-const FALLBACK_VERSION = '0.3.0';
+const FALLBACK_VERSION = '0.4.0';
 
 function normalizeVersion(value) {
   return String(value || '0.0.0').trim().replace(/^v/i, '').split('-')[0]
@@ -19,7 +19,10 @@ function compareVersions(left, right) {
 function platformAsset(assets = []) {
   const ua = navigator.userAgent.toLowerCase();
   let pattern;
-  if (ua.includes('windows')) pattern = /windows-x64\.zip$/i;
+  // Android WebView user agents also contain "Linux", so Android must be
+  // detected before the desktop Linux AppImage branch.
+  if (ua.includes('android')) pattern = /android-arm64\.apk$/i;
+  else if (ua.includes('windows')) pattern = /windows-x64\.zip$/i;
   else if (ua.includes('mac')) pattern = /macos-(arm64|x64)\.zip$/i;
   else if (ua.includes('linux')) pattern = /linux-x64\.AppImage$/i;
   return assets.find(asset => pattern?.test(asset.name)) || null;
@@ -92,7 +95,11 @@ const button = document.querySelector('#check-update');
 button?.addEventListener('click', () => checkForUpdates({ manual: true }));
 
 document.querySelector('#download-update')?.addEventListener('click', () => {
-  setStatus('下载后退出应用，解压并覆盖旧程序；登录状态会保留。', 'available');
+  if (navigator.userAgent.toLowerCase().includes('android')) {
+    setStatus('APK 下载完成后由 Android 安装器确认升级；应用数据与网页登录状态会保留。', 'available');
+  } else {
+    setStatus('下载后退出应用，解压并覆盖旧程序；登录状态会保留。', 'available');
+  }
 });
 
 if (shouldAutoCheck()) setTimeout(() => checkForUpdates(), 2500);
