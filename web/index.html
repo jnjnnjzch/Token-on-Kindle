@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Token on Kindle</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header><div><h1>Token on Kindle</h1><p>Codex / DeepSeek Kindle 锁屏看板</p></div><span id="service">启动中…</span></header>
+    <section class="actions">
+      <button id="open-codex">登录 / 打开 Codex Analytics</button>
+      <button id="open-deepseek">登录 / 打开 DeepSeek Platform</button>
+      <button id="refresh">重新生成锁屏图</button>
+    </section>
+    <section class="status-grid">
+      <article><h2>Codex</h2><pre id="codex-status">尚未采集</pre></article>
+      <article><h2>DeepSeek</h2><pre id="deepseek-status">尚未采集</pre></article>
+    </section>
+    <section class="preview-wrap">
+      <div><h2>Kindle 预览</h2><p>固定输出：600×800、8 位灰度真 PNG</p><canvas id="dashboard" width="600" height="800"></canvas></div>
+      <aside><h2>Online Screensaver 地址</h2><code id="url">读取中…</code><p>把此地址填入 Kindle 插件的 <code>IMAGE_URI</code>。</p><button id="copy">复制地址</button><h2>说明</h2><p>桌面端可缩小到托盘。Android 首版需保持应用前台，后续增加前台服务。</p></aside>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
