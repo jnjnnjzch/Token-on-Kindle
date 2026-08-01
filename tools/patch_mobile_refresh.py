@@ -153,3 +153,4 @@ for old, new in replacements:
 
 path.write_text(source, encoding="utf-8")
 print("Added foreground mobile Codex/DeepSeek refresh sequencing")
+# Touch after workflow creation so the one-shot patch is dispatched.
