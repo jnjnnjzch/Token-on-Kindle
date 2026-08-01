@@ -28,3 +28,4 @@ if old not in source:
 
 path.write_text(source.replace(old, new, 1), encoding="utf-8")
 print("Moved menu and tray imports behind desktop cfg")
+# This file intentionally triggers the temporary one-shot patch workflow.
