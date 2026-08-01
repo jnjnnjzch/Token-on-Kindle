@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.2.1'
+        description: 'Release version, for example v0.3.0'
         required: true
         type: string
       prerelease:
@@ -35,7 +35,7 @@ jobs:
             version='${{ github.ref_name }}'
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must look like v0.2.1; got $version" >&2
+            echo "Version must look like v0.3.0; got $version" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -144,12 +144,25 @@ jobs:
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all platform payloads
         uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release
           merge-multiple: true
+
+      - name: Package KOReader plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          cd koreader
+          zip -r "../release/Token-on-Kindle-$version-koreader-plugin.zip" tokenonkindle.koplugin README.md
+          cd ../release
+          sha256sum "Token-on-Kindle-$version-koreader-plugin.zip" > "Token-on-Kindle-$version-koreader-plugin.sha256"
 
       - name: Create combined checksums
         shell: bash
