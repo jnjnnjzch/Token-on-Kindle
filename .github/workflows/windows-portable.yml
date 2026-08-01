@@ -10,6 +10,14 @@ on:
       - 'shared/**'
       - 'package.json'
       - '.github/workflows/windows-portable.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'web/**'
+      - 'shared/**'
+      - 'package.json'
+      - '.github/workflows/windows-portable.yml'
 
 jobs:
   build-windows:
