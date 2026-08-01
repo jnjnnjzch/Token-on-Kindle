@@ -24,3 +24,4 @@ if old not in source:
 
 path.write_text(source.replace(old, new, 1), encoding="utf-8")
 print("Enabled extractor and title signal handling in the main mobile WebView")
+# Touch after workflow creation so the one-shot patch is actually dispatched.
