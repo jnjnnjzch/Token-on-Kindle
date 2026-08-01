@@ -1,5 +1,6 @@
 const GITHUB_LATEST_RELEASE = 'https://api.github.com/repos/jnjnnjzch/Token-on-Kindle/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const FALLBACK_VERSION = '0.3.0';
 
 function normalizeVersion(value) {
   return String(value || '0.0.0').trim().replace(/^v/i, '').split('-')[0]
@@ -26,9 +27,9 @@ function platformAsset(assets = []) {
 
 async function currentVersion() {
   try {
-    return await window.__TAURI__?.app?.getVersion?.() || '0.2.0';
+    return await window.__TAURI__?.app?.getVersion?.() || FALLBACK_VERSION;
   } catch {
-    return '0.2.0';
+    return FALLBACK_VERSION;
   }
 }
 
