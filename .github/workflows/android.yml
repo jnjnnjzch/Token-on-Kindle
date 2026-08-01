@@ -43,21 +43,21 @@ jobs:
       - name: Initialize Android project
         run: npm run tauri android init -- --ci
 
-      - name: Build arm64 APK
-        run: npm run tauri android build -- --apk --target aarch64
+      - name: Build installable arm64 debug APK
+        run: npm run tauri android build -- --debug --apk --target aarch64
 
       - name: Collect APK
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release
-          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print -quit)
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
           test -n "$apk"
-          cp "$apk" release/Token-on-Kindle-android-arm64.apk
-          sha256sum release/Token-on-Kindle-android-arm64.apk > release/Token-on-Kindle-android-arm64.sha256
+          cp "$apk" release/Token-on-Kindle-android-arm64-debug.apk
+          sha256sum release/Token-on-Kindle-android-arm64-debug.apk > release/Token-on-Kindle-android-arm64-debug.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Token-on-Kindle-android-arm64
+          name: Token-on-Kindle-android-arm64-debug
           path: release/*
           if-no-files-found: error
