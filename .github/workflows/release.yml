@@ -1,0 +1,99 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example v0.2.1'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $version = '${{ inputs.version }}'
+          } else {
+            $version = '${{ github.ref_name }}'
+          }
+          if ($version -notmatch '^v\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Version must look like v0.2.1; got $version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test shared core and extractors
+        run: npm test
+
+      - name: Build portable Windows executable
+        run: npm run build -- --no-bundle
+
+      - name: Package release files
+        shell: pwsh
+        run: |
+          $version = '${{ steps.meta.outputs.version }}'
+          $stage = "release/Token-on-Kindle-$version-windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "src-tauri/target/release/token-on-kindle.exe" "$stage/Token-on-Kindle.exe"
+          Copy-Item README.md "$stage/README.md"
+          Compress-Archive -Path "$stage/*" -DestinationPath "release/Token-on-Kindle-$version-windows-x64.zip" -Force
+          $hash = (Get-FileHash "release/Token-on-Kindle-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  Token-on-Kindle-$version-windows-x64.zip" | Out-File "release/Token-on-Kindle-$version-SHA256SUMS.txt" -Encoding ascii
+
+      - name: Upload release payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-payload
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    needs: windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release payload
+        uses: actions/download-artifact@v4
+        with:
+          name: release-payload
+          path: release
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.windows.outputs.version }}
+          name: Token on Kindle ${{ needs.windows.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          files: |
+            release/Token-on-Kindle-*.zip
+            release/Token-on-Kindle-*-SHA256SUMS.txt
