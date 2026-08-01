@@ -2,6 +2,8 @@ import { encodeGrayscalePng, rgbaToGrayscale, verifyKindlePng } from './core.mjs
 
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
+const CODEX_URL = 'https://chatgpt.com/codex/cloud/settings/analytics';
+const DEEPSEEK_URL = 'https://platform.deepseek.com/usage';
 let state = { codex: null, deepseek: null, receivedAt: null };
 const canvas = document.querySelector('#dashboard');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -109,8 +111,13 @@ async function load() {
   await listen('metrics-updated', event => { state = event.payload; updateUi(); });
 }
 
-document.querySelector('#open-codex').onclick = () => invoke?.('open_source', { source: 'codex' });
-document.querySelector('#open-deepseek').onclick = () => invoke?.('open_source', { source: 'deepseek' });
+function openInCurrentWebview(url) {
+  document.querySelector('#service').textContent = '正在打开登录页…';
+  window.location.assign(url);
+}
+
+document.querySelector('#open-codex').onclick = () => openInCurrentWebview(CODEX_URL);
+document.querySelector('#open-deepseek').onclick = () => openInCurrentWebview(DEEPSEEK_URL);
 document.querySelector('#refresh').onclick = () => publish();
 document.querySelector('#copy').onclick = () => navigator.clipboard.writeText(document.querySelector('#url').textContent);
 load();
