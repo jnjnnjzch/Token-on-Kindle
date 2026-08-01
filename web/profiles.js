@@ -18,28 +18,21 @@ export const KINDLE_PROFILES = Object.freeze([
   {
     id: 'kindle-1072x1448',
     name: '1072 × 1448',
-    models: 'Paperwhite 3 / 4、Oasis 1、部分新款基础版',
+    models: 'Voyage、Paperwhite 3 / 4、Oasis 1、Kindle 11 等 300 ppi 6 英寸机型',
     width: 1072,
     height: 1448
   },
   {
-    id: 'kindle-1080x1440',
-    name: '1080 × 1440',
-    models: 'Kindle Voyage',
-    width: 1080,
-    height: 1440
-  },
-  {
     id: 'kindle-1236x1648',
     name: '1236 × 1648',
-    models: 'Kindle Paperwhite 5（11 代）',
+    models: 'Kindle Paperwhite 5（11 代，6.8 英寸）',
     width: 1236,
     height: 1648
   },
   {
     id: 'kindle-1264x1680',
     name: '1264 × 1680',
-    models: 'Oasis 2 / 3、7 英寸 Paperwhite / Colorsoft',
+    models: 'Kindle Oasis 2 / 3 与 7 英寸 300 ppi 机型',
     width: 1264,
     height: 1680
   },
