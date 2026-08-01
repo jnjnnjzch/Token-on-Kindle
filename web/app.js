@@ -1,10 +1,13 @@
 import { encodeGrayscalePng, rgbaToGrayscale, verifyKindlePng } from './core.mjs';
+import { DEFAULT_PROFILE_ID, KINDLE_PROFILES, getKindleProfile } from './profiles.js';
 
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
 let state = { codex: null, deepseek: null, receivedAt: null };
 const canvas = document.querySelector('#dashboard');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const previewCtx = canvas.getContext('2d', { willReadFrequently: true });
+let ctx = previewCtx;
+let selectedProfileId = localStorage.getItem('token-on-kindle:profile') || DEFAULT_PROFILE_ID;
 
 const palette = {
   paper: '#ffffff',
@@ -226,13 +229,71 @@ function render() {
   ctx.fillRect(0, 720, 600, 80);
 }
 
-async function publish() {
+function renderToContext(targetCtx, width, height) {
+  const previous = ctx;
+  ctx = targetCtx;
+  targetCtx.save();
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0);
+  targetCtx.clearRect(0, 0, width, height);
+  targetCtx.setTransform(width / 600, 0, 0, height / 800, 0, 0);
   render();
-  const rgba = ctx.getImageData(0, 0, 600, 800).data;
-  const png = encodeGrayscalePng(600, 800, rgbaToGrayscale(rgba));
-  const check = verifyKindlePng(png);
+  targetCtx.restore();
+  ctx = previous;
+}
+
+function renderPreview() {
+  renderToContext(previewCtx, 600, 800);
+}
+
+function updateProfileUi() {
+  const profile = getKindleProfile(selectedProfileId);
+  const format = document.querySelector('#format-note');
+  const description = document.querySelector('#profile-description');
+  if (format) format.textContent = `${profile.width} × ${profile.height} · 8 位灰度 PNG`;
+  if (description) description.textContent = profile.models;
+}
+
+function initializeProfileSelect() {
+  const select = document.querySelector('#kindle-profile');
+  if (!select) return;
+  select.replaceChildren(...KINDLE_PROFILES.map(profile => {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = `${profile.name} — ${profile.models}`;
+    return option;
+  }));
+  selectedProfileId = getKindleProfile(selectedProfileId).id;
+  select.value = selectedProfileId;
+  select.addEventListener('change', () => {
+    selectedProfileId = getKindleProfile(select.value).id;
+    localStorage.setItem('token-on-kindle:profile', selectedProfileId);
+    updateProfileUi();
+    publish().catch(error => {
+      document.querySelector('#service').textContent = `生成失败：${error.message}`;
+    });
+  });
+  updateProfileUi();
+}
+
+async function publish() {
+  renderPreview();
+  const profile = getKindleProfile(selectedProfileId);
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = profile.width;
+  outputCanvas.height = profile.height;
+  const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
+  renderToContext(outputCtx, profile.width, profile.height);
+
+  const rgba = outputCtx.getImageData(0, 0, profile.width, profile.height).data;
+  const png = encodeGrayscalePng(profile.width, profile.height, rgbaToGrayscale(rgba));
+  const check = verifyKindlePng(png, profile.width, profile.height);
   if (!check.ok) throw new Error(check.error);
-  if (invoke) await invoke('set_dashboard_png', { bytes: Array.from(png) });
+  if (invoke) {
+    await invoke('set_dashboard_png', {
+      bytes: Array.from(png),
+      profile: profile.id
+    });
+  }
 }
 
 function updateUi() {
@@ -244,9 +305,10 @@ function updateUi() {
 }
 
 async function load() {
+  initializeProfileSelect();
   if (!invoke) {
     document.querySelector('#service').textContent = '浏览器预览模式';
-    render();
+    renderPreview();
     return;
   }
   state = await invoke('get_status');
