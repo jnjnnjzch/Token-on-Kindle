@@ -1,11 +1,11 @@
 {
   "name": "token-on-kindle",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Cross-platform Tauri app that turns Codex and DeepSeek web usage into a Kindle screensaver.",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs && node --check web/app.js && node --check web/extractor.js && node --check web/update.js",
     "smoke": "node tools/smoke-server.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
