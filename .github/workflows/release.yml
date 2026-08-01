@@ -11,8 +11,13 @@ on:
       - 'koreader/**'
       - 'package.json'
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - '.github/workflows/release.yml'
+      - 'package.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/tauri.conf.json'
   workflow_dispatch:
     inputs:
       version:
@@ -34,6 +39,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
       - name: Resolve version
         id: meta
         shell: bash
@@ -42,8 +48,10 @@ jobs:
             version='v0.3.0-pr${{ github.event.number }}'
           elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
             version='${{ inputs.version }}'
-          else
+          elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
             version='${{ github.ref_name }}'
+          else
+            version="v$(node -p \"require('./package.json').version\")"
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
             echo "Version must look like v0.3.0; got $version" >&2
