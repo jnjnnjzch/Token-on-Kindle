@@ -33,6 +33,8 @@ struct AppState {
     metrics: Mutex<MetricsState>,
     png: Arc<RwLock<Vec<u8>>>,
     port: u16,
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    mobile_refresh: Mutex<bool>,
 }
 
 fn timestamp() -> String {
@@ -182,8 +184,15 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn reload_sources(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    *state
+        .mobile_refresh
+        .lock()
+        .map_err(|_| "移动端刷新状态锁已损坏")? = true;
     let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
-    window.eval("location.reload()").map_err(|error| error.to_string())
+    window
+        .navigate(CODEX_URL.parse().map_err(|error| format!("URL 错误: {error}"))?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -191,7 +200,6 @@ async fn refresh_sources(app: AppHandle) -> Result<(), String> {
     reload_sources(&app)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn start_refresh_scheduler(app: AppHandle) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(REFRESH_SECONDS));
@@ -236,6 +244,10 @@ fn dashboard_app_url() -> &'static str {
 fn return_to_dashboard(window: &WebviewWindow) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
+        let state = window.app_handle().state::<AppState>();
+        if let Ok(mut active) = state.mobile_refresh.lock() {
+            *active = false;
+        }
         if let Ok(url) = dashboard_app_url().parse() {
             let _ = window.navigate(url);
         }
@@ -285,6 +297,26 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
         metrics.clone()
     };
     let _ = app.emit_to("main", "metrics-updated", snapshot);
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let active = state
+            .mobile_refresh
+            .lock()
+            .map(|value| *value)
+            .unwrap_or(false);
+        if active {
+            match source {
+                "codex" => {
+                    if let Ok(url) = DEEPSEEK_URL.parse() {
+                        let _ = window.navigate(url);
+                    }
+                }
+                "deepseek" => return_to_dashboard(window),
+                _ => {}
+            }
+        }
+    }
 }
 
 fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>) {
@@ -427,6 +459,8 @@ pub fn run() {
             metrics: Mutex::new(MetricsState::default()),
             png,
             port,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            mobile_refresh: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             set_dashboard_png,
@@ -448,9 +482,9 @@ pub fn run() {
             {
                 create_source_window(app, "codex")?;
                 create_source_window(app, "deepseek")?;
-                start_refresh_scheduler(app.handle().clone());
             }
 
+            start_refresh_scheduler(app.handle().clone());
             build_tray(app)?;
             Ok(())
         })
