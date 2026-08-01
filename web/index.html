@@ -64,6 +64,22 @@
           <div class="schedule-row"><strong>安全区</strong><span>底部黑带用于显示白色“滑动以解锁”</span></div>
         </section>
 
+        <section class="panel app-update-panel">
+          <div class="panel-heading compact-heading">
+            <div>
+              <span class="eyebrow">APP UPDATE</span>
+              <h2>应用更新</h2>
+            </div>
+            <span id="installed-version" class="format-note">读取版本中…</span>
+          </div>
+          <p id="update-status" class="update-status">启动后会自动检查 GitHub Releases</p>
+          <div class="update-actions">
+            <button id="check-update" class="copy-button">检查更新</button>
+            <a id="download-update" class="download-button" hidden target="_blank" rel="noreferrer">下载新版本</a>
+          </div>
+          <p class="help-text">更新只替换应用程序，不删除系统应用数据目录。Codex 与 DeepSeek 登录状态会继续保留。</p>
+        </section>
+
         <details class="panel debug-panel">
           <summary>查看采集详情</summary>
           <div class="status-grid">
@@ -75,5 +91,6 @@
     </section>
   </main>
   <script type="module" src="app.js"></script>
+  <script type="module" src="update.js"></script>
 </body>
 </html>
