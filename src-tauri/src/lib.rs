@@ -95,22 +95,29 @@ fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
-    let (label, title, url) = source_url(source)?;
-    if let Some(window) = app.get_webview_window(label) {
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-        return Ok(());
-    }
-
-    let parsed = url.parse().map_err(|error| format!("URL 错误: {error}"))?;
+fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
+    let (label, title, url) = source_url(source).map_err(tauri::Error::AssetNotFound)?;
+    let parsed = url
+        .parse()
+        .map_err(|_| tauri::Error::AssetNotFound(url.to_string()))?;
     WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed))
         .title(title)
-        .inner_size(1120.0, 800.0)
+        .inner_size(1180.0, 820.0)
+        .visible(false)
         .initialization_script(EXTRACTOR_SCRIPT)
         .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
-        .build()
-        .map_err(|error| error.to_string())?;
+        .build()?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
+    let (label, _, _) = source_url(source)?;
+    let window = app
+        .get_webview_window(label)
+        .ok_or_else(|| format!("{label} 后台窗口尚未创建"))?;
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -124,7 +131,7 @@ fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_source(app: AppHandle, source: String) -> Result<(), String> {
+async fn open_source(app: AppHandle, source: String) -> Result<(), String> {
     open_source_impl(&app, &source)
 }
 
@@ -171,7 +178,7 @@ fn return_to_dashboard(window: &WebviewWindow) {
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        let _ = window.close();
+        let _ = window.hide();
         if let Some(main) = window.app_handle().get_webview_window("main") {
             let _ = main.show();
             let _ = main.set_focus();
@@ -186,17 +193,25 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
         }
         return;
     }
-    let Some(rest) = title.strip_prefix(SIGNAL_PREFIX) else { return; };
+    let Some(rest) = title.strip_prefix(SIGNAL_PREFIX) else {
+        return;
+    };
     let mut parts = rest.splitn(2, ':');
     let source = parts.next().unwrap_or_default();
     let encoded = parts.next().unwrap_or_default();
-    let Ok(decoded) = decode_base64_url(encoded) else { return; };
-    let Ok(payload) = serde_json::from_slice::<Value>(&decoded) else { return; };
+    let Ok(decoded) = decode_base64_url(encoded) else {
+        return;
+    };
+    let Ok(payload) = serde_json::from_slice::<Value>(&decoded) else {
+        return;
+    };
 
     let app = window.app_handle();
     let state = app.state::<AppState>();
     let snapshot = {
-        let Ok(mut metrics) = state.metrics.lock() else { return; };
+        let Ok(mut metrics) = state.metrics.lock() else {
+            return;
+        };
         match source {
             "codex" => metrics.codex = Some(payload),
             "deepseek" => metrics.deepseek = Some(payload),
@@ -315,8 +330,12 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                     let _ = window.set_focus();
                 }
             }
-            "codex" => { let _ = open_source_impl(app, "codex"); }
-            "deepseek" => { let _ = open_source_impl(app, "deepseek"); }
+            "codex" => {
+                let _ = open_source_impl(app, "codex");
+            }
+            "deepseek" => {
+                let _ = open_source_impl(app, "deepseek");
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -325,7 +344,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-fn build_tray(_app: &tauri::App) -> tauri::Result<()> { Ok(()) }
+fn build_tray(_app: &tauri::App) -> tauri::Result<()> {
+    Ok(())
+}
 
 #[cfg_attr(any(target_os = "android", target_os = "ios"), tauri::mobile_entry_point)]
 pub fn run() {
@@ -350,19 +371,22 @@ pub fn run() {
                 .title("Token on Kindle")
                 .inner_size(1080.0, 760.0)
                 .min_inner_size(760.0, 580.0)
-                .initialization_script(EXTRACTOR_SCRIPT)
-                .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
+
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                create_source_window(app, "codex")?;
+                create_source_window(app, "deepseek")?;
+            }
+
             build_tray(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .run(tauri::generate_context!())
