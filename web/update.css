@@ -1,0 +1,53 @@
+.app-update-panel {
+  padding: 20px;
+}
+
+.compact-heading {
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.update-status {
+  min-height: 22px;
+  margin: 0 0 14px;
+  color: #5e5e59;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.update-status[data-state="ok"] { color: #2f6038; }
+.update-status[data-state="available"] { color: #1c1c1c; font-weight: 700; }
+.update-status[data-state="error"] { color: #8a3030; }
+
+.update-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+
+.download-button {
+  display: block;
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #181818;
+  border-radius: 12px;
+  background: #181818;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+  text-align: center;
+  text-decoration: none;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+
+.download-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0,0,0,.13);
+}
+
+.download-button[hidden] { display: none; }
+
+#check-update:disabled {
+  cursor: wait;
+  opacity: .62;
+}

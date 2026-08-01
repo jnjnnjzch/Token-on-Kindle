@@ -12,10 +12,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run parser and PNG tests
+      - name: Run parser, PNG, and JavaScript checks
         run: npm test
-      - name: Check frontend syntax
+      - name: Install Lua 5.1 syntax checker
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Check KOReader plugin syntax
         run: |
-          node --check web/app.js
-          node --check web/extractor.js
-          node --check web/core.mjs
+          luac5.1 -p koreader/tokenonkindle.koplugin/main.lua
+          luac5.1 -p koreader/tokenonkindle.koplugin/_meta.lua

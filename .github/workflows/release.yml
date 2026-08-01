@@ -1,13 +1,27 @@
 name: Publish release
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+      - 'src-tauri/**'
+      - 'web/**'
+      - 'shared/**'
+      - 'koreader/**'
+      - 'package.json'
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - '.github/workflows/release.yml'
+      - 'package.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/tauri.conf.json'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.2.1'
+        description: 'Release version, for example v0.3.0'
         required: true
         type: string
       prerelease:
@@ -20,80 +34,173 @@ permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  prepare:
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Resolve version
         id: meta
-        shell: pwsh
+        shell: bash
         run: |
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-            $version = '${{ inputs.version }}'
-          } else {
-            $version = '${{ github.ref_name }}'
-          }
-          if ($version -notmatch '^v\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
-            throw "Version must look like v0.2.1; got $version"
-          }
-          "version=$version" >> $env:GITHUB_OUTPUT
+          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
+            version='v0.3.0-pr${{ github.event.number }}'
+          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
+            version='${{ inputs.version }}'
+          elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
+            version='${{ github.ref_name }}'
+          else
+            package_version=$(node -p "require('./package.json').version")
+            version="v${package_version}"
+          fi
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must look like v0.3.0; got $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+          - os: macos-14
+            platform: macos-arm64
+          - os: ubuntu-22.04
+            platform: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install frontend dependencies
+        run: npm install
 
       - name: Test shared core and extractors
         run: npm test
 
-      - name: Build portable Windows executable
+      - name: Build Windows portable executable
+        if: runner.os == 'Windows'
         run: npm run build -- --no-bundle
 
-      - name: Package release files
+      - name: Build macOS application bundle
+        if: runner.os == 'macOS'
+        run: npm run tauri build -- --bundles app --no-sign
+
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = '${{ steps.meta.outputs.version }}'
+          $version = '${{ needs.prepare.outputs.version }}'
           $stage = "release/Token-on-Kindle-$version-windows-x64"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "src-tauri/target/release/token-on-kindle.exe" "$stage/Token-on-Kindle.exe"
           Copy-Item README.md "$stage/README.md"
           Compress-Archive -Path "$stage/*" -DestinationPath "release/Token-on-Kindle-$version-windows-x64.zip" -Force
           $hash = (Get-FileHash "release/Token-on-Kindle-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  Token-on-Kindle-$version-windows-x64.zip" | Out-File "release/Token-on-Kindle-$version-SHA256SUMS.txt" -Encoding ascii
+          "$hash  Token-on-Kindle-$version-windows-x64.zip" | Out-File "release/Token-on-Kindle-$version-windows-x64.sha256" -Encoding ascii
 
-      - name: Upload release payload
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          app_path=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "release/Token-on-Kindle-$version-macos-arm64.zip"
+          shasum -a 256 "release/Token-on-Kindle-$version-macos-arm64.zip" > "release/Token-on-Kindle-$version-macos-arm64.sha256"
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          cp "$appimage" "release/Token-on-Kindle-$version-linux-x64.AppImage"
+          chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
+          sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
+
+      - name: Upload platform payload
         uses: actions/upload-artifact@v4
         with:
-          name: release-payload
+          name: release-${{ matrix.platform }}
           path: release/*
           if-no-files-found: error
 
-  publish:
-    needs: windows
+  assemble:
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Download release payload
+      - uses: actions/checkout@v4
+      - name: Download all platform payloads
         uses: actions/download-artifact@v4
         with:
-          name: release-payload
+          pattern: release-*
           path: release
+          merge-multiple: true
+
+      - name: Package KOReader plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          cd koreader
+          zip -r "../release/Token-on-Kindle-$version-koreader-plugin.zip" tokenonkindle.koplugin README.md
+          cd ../release
+          sha256sum "Token-on-Kindle-$version-koreader-plugin.zip" > "Token-on-Kindle-$version-koreader-plugin.sha256"
+
+      - name: Create combined checksums
+        shell: bash
+        run: |
+          cd release
+          cat *.sha256 > "Token-on-Kindle-${{ needs.prepare.outputs.version }}-SHA256SUMS.txt"
+
+      - name: Upload assembled dry-run payload
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run
+          path: |
+            release/Token-on-Kindle-*.zip
+            release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*-SHA256SUMS.txt
+          if-no-files-found: error
 
       - name: Create or update GitHub Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.windows.outputs.version }}
-          name: Token on Kindle ${{ needs.windows.outputs.version }}
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Token on Kindle ${{ needs.prepare.outputs.version }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           files: |
             release/Token-on-Kindle-*.zip
+            release/Token-on-Kindle-*.AppImage
             release/Token-on-Kindle-*-SHA256SUMS.txt
