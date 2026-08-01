@@ -5,6 +5,7 @@ use std::{
     net::{TcpListener, TcpStream, UdpSocket},
     sync::{Arc, Mutex, RwLock},
     thread,
+    time::Duration,
 };
 use tauri::{
     image::Image,
@@ -18,6 +19,7 @@ const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";
 const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
 const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
 const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
+const REFRESH_SECONDS: u64 = 10 * 60;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,10 +98,12 @@ fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str)
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
-    let (label, title, url) = source_url(source).map_err(tauri::Error::AssetNotFound)?;
-    let parsed = url
-        .parse()
-        .map_err(|_| tauri::Error::AssetNotFound(url.to_string()))?;
+    let (label, title, url) = match source {
+        "codex" => ("codex-login", "Codex Analytics", CODEX_URL),
+        "deepseek" => ("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL),
+        _ => unreachable!("only static sources are created"),
+    };
+    let parsed = url.parse().expect("static source URL must be valid");
     WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed))
         .title(title)
         .inner_size(1180.0, 820.0)
@@ -133,6 +137,40 @@ fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
 #[tauri::command]
 async fn open_source(app: AppHandle, source: String) -> Result<(), String> {
     open_source_impl(&app, &source)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn reload_sources(app: &AppHandle) -> Result<(), String> {
+    let mut refreshed = 0;
+    for label in ["codex-login", "deepseek-login"] {
+        if let Some(window) = app.get_webview_window(label) {
+            window.eval("location.reload()").map_err(|error| error.to_string())?;
+            refreshed += 1;
+        }
+    }
+    if refreshed == 0 {
+        return Err("没有可刷新的后台窗口".into());
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn reload_sources(app: &AppHandle) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
+    window.eval("location.reload()").map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn refresh_sources(app: AppHandle) -> Result<(), String> {
+    reload_sources(&app)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn start_refresh_scheduler(app: AppHandle) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(REFRESH_SECONDS));
+        let _ = reload_sources(&app);
+    });
 }
 
 fn decode_base64_url(input: &str) -> Result<Vec<u8>, String> {
@@ -317,8 +355,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示看板", true, None::<&str>)?;
     let codex = MenuItem::with_id(app, "codex", "打开 Codex", true, None::<&str>)?;
     let deepseek = MenuItem::with_id(app, "deepseek", "打开 DeepSeek", true, None::<&str>)?;
+    let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &codex, &deepseek, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &codex, &deepseek, &refresh, &quit])?;
     TrayIconBuilder::new()
         .icon(tray_icon())
         .tooltip("Token on Kindle")
@@ -335,6 +374,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             }
             "deepseek" => {
                 let _ = open_source_impl(app, "deepseek");
+            }
+            "refresh" => {
+                let _ = reload_sources(app);
             }
             "quit" => app.exit(0),
             _ => {}
@@ -364,7 +406,8 @@ pub fn run() {
             set_dashboard_png,
             get_status,
             get_dashboard_url,
-            open_source
+            open_source,
+            refresh_sources
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -377,6 +420,7 @@ pub fn run() {
             {
                 create_source_window(app, "codex")?;
                 create_source_window(app, "deepseek")?;
+                start_refresh_scheduler(app.handle().clone());
             }
 
             build_tray(app)?;
