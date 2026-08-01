@@ -108,9 +108,12 @@ function TokenOnKindle:copyToLinkss()
     end
 
     local target = LINKSS_DIR .. "/token-on-kindle.png"
-    local ok = FFIUtil.copyFile(self.output_file, target)
-    if not ok then
+    -- KOReader's ffi.util.copyFile returns nil on success and an error string
+    -- on failure; it is not a boolean-returning function.
+    local copy_error = FFIUtil.copyFile(self.output_file, target)
+    if copy_error then
         return nil, _("Could not copy the dashboard to linkss.")
+            .. "\n" .. tostring(copy_error)
     end
     return true
 end
