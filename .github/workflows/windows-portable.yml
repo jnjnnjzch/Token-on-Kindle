@@ -1,0 +1,33 @@
+name: Windows portable EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'web/**'
+      - 'shared/**'
+      - 'package.json'
+      - '.github/workflows/windows-portable.yml'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend CLI
+        run: npm install
+      - name: Test shared core
+        run: npm test
+      - name: Build portable executable
+        run: npm run build -- --no-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Token-on-Kindle-windows-portable
+          path: src-tauri/target/release/token-on-kindle.exe
+          if-no-files-found: error
