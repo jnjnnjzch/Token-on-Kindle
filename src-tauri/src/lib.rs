@@ -8,10 +8,14 @@ use std::{
     time::Duration,
 };
 use tauri::{
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
