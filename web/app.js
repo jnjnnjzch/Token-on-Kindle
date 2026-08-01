@@ -2,17 +2,27 @@ import { encodeGrayscalePng, rgbaToGrayscale, verifyKindlePng } from './core.mjs
 
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
-const CODEX_URL = 'https://chatgpt.com/codex/cloud/settings/analytics';
-const DEEPSEEK_URL = 'https://platform.deepseek.com/usage';
 let state = { codex: null, deepseek: null, receivedAt: null };
 const canvas = document.querySelector('#dashboard');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+const palette = {
+  paper: '#ffffff',
+  ink: '#111111',
+  secondary: '#5f5f5f',
+  soft: '#ededeb',
+  softer: '#f6f6f3',
+  mid: '#9a9a96',
+  line: '#c8c8c3',
+  black: '#000000'
+};
 
 const valueOf = item => {
   if (item == null) return null;
   const value = typeof item === 'number' ? item : item.value;
   return Number.isFinite(Number(value)) ? Number(value) : null;
 };
+const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const fmtTokens = value => {
   const n = valueOf(value);
   if (n == null) return '—';
@@ -27,126 +37,193 @@ const fmtMoney = value => {
 };
 const fmtPercent = value => {
   const n = valueOf(value);
-  return n == null ? '—' : `${Math.max(0, Math.min(100, n)).toFixed(n % 1 ? 1 : 0)}%`;
+  if (n == null) return '—';
+  const bounded = clamp(n, 0, 100);
+  return `${bounded.toFixed(Math.abs(bounded % 1) > 0.05 ? 1 : 0)}%`;
 };
-const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+const timeOnly = value => {
+  if (!value) return '未连接';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '未知' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 
-function box(x, y, w, h, line = 2) {
-  ctx.lineWidth = line;
-  ctx.strokeRect(x, y, w, h);
+function setFill(value) { ctx.fillStyle = value; }
+function setStroke(value) { ctx.strokeStyle = value; }
+function roundedPath(x, y, w, h, r = 12) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
 }
-function line(x1, y1, x2, y2, width = 1) {
+function card(x, y, w, h, { fill = palette.softer, stroke = null, radius = 12, lineWidth = 1 } = {}) {
+  roundedPath(x, y, w, h, radius);
+  if (fill) {
+    setFill(fill);
+    ctx.fill();
+  }
+  if (stroke) {
+    setStroke(stroke);
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+}
+function line(x1, y1, x2, y2, width = 1, color = palette.ink) {
+  setStroke(color);
   ctx.lineWidth = width;
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
 }
-function text(value, x, y, size = 16, bold = false, align = 'left') {
-  ctx.font = `${bold ? 800 : 400} ${size}px system-ui,"Microsoft YaHei",sans-serif`;
+function text(value, x, y, size = 16, weight = 400, align = 'left', color = palette.ink) {
+  setFill(color);
+  ctx.font = `${weight} ${size}px system-ui,"Microsoft YaHei",sans-serif`;
   ctx.textAlign = align;
   ctx.textBaseline = 'top';
   ctx.fillText(String(value), x, y);
 }
-function progressBar(x, y, w, h, ratio, outline = 2) {
-  box(x, y, w, h, outline);
-  const inner = Math.max(0, w - 8);
-  ctx.fillRect(x + 4, y + 4, Math.round(inner * clamp(ratio)), Math.max(1, h - 8));
+function label(value, x, y, align = 'left') {
+  text(value, x, y, 11, 650, align, palette.secondary);
 }
-function sectionTitle(title, subtitle, y) {
-  text(title, 28, y, 22, true);
-  text(subtitle, 572, y + 5, 12, false, 'right');
-}
-function statColumn(label, value, x, y, align = 'left') {
-  text(label, x, y, 12, false, align);
-  text(value, x, y + 20, 25, true, align);
+function horizontalBar(x, y, w, h, ratio, fill = palette.ink) {
+  card(x, y, w, h, { fill: palette.line, radius: h / 2 });
+  const width = Math.max(0, Math.round(w * clamp(ratio)));
+  if (width > 0) card(x, y, width, h, { fill, radius: h / 2 });
 }
 
-function deepSeekModel(data, name) {
-  const raw = data?.[name] || {};
+function modelData(ds, name) {
+  const raw = ds?.models?.[name] || ds?.[name] || {};
+  const hit = valueOf(raw.cacheHitTokens);
+  const miss = valueOf(raw.cacheMissTokens);
   return {
     tokens: valueOf(raw.tokens),
     cost: valueOf(raw.cost),
-    cacheHitTokens: valueOf(raw.cacheHitTokens),
-    cacheMissTokens: valueOf(raw.cacheMissTokens)
+    cacheRate: valueOf(raw.cacheRate) ?? (hit != null || miss != null ? 100 * (hit || 0) / Math.max(1, (hit || 0) + (miss || 0)) : null)
   };
 }
 
-function drawModelRow(y, label, model, tokenScale) {
-  box(28, y, 544, 73, 2);
-  text(label, 42, y + 10, 18, true);
-  text(fmtTokens(model.tokens), 42, y + 34, 25, true);
-  text('tokens', 143, y + 43, 11);
-  text(fmtMoney(model.cost), 555, y + 13, 22, true, 'right');
-  text('今日费用', 555, y + 41, 11, false, 'right');
-  const ratio = model.tokens == null || tokenScale <= 0 ? 0 : model.tokens / tokenScale;
-  progressBar(205, y + 43, 230, 16, ratio, 1);
+function drawCodex(weekly) {
+  label('CODEX · WEEKLY', 34, 83);
+  card(28, 102, 544, 132, { fill: palette.softer, stroke: palette.line, radius: 16 });
+  if (!weekly) {
+    text('尚未同步', 46, 128, 26, 750);
+    text('打开 Codex Analytics 完成登录', 46, 168, 13, 400, 'left', palette.secondary);
+    return;
+  }
+
+  const remaining = clamp(Number(weekly.remainingPercent ?? weekly.displayedPercent ?? 0), 0, 100);
+  text('本周剩余', 46, 124, 15, 650, 'left', palette.secondary);
+  text(`${Math.round(remaining)}%`, 554, 115, 46, 800, 'right');
+  horizontalBar(46, 174, 508, 18, remaining / 100, palette.black);
+  text(`已用 ${Math.round(weekly.usedPercent ?? 100 - remaining)}%`, 46, 202, 11, 500, 'left', palette.secondary);
+  text(weekly.resetText ? `重置 ${weekly.resetText}` : '重置时间未知', 554, 202, 11, 500, 'right', palette.secondary);
+}
+
+function drawSummary(ds, todayCost, todayTokens) {
+  label('DEEPSEEK · TODAY', 34, 252);
+  text(ds.date || '今日', 566, 250, 11, 500, 'right', palette.secondary);
+  card(28, 270, 544, 74, { fill: palette.softer, stroke: palette.line, radius: 14 });
+
+  const metrics = [
+    ['余额', fmtMoney(ds.balance)],
+    ['今日费用', fmtMoney(todayCost)],
+    ['今日 Token', fmtTokens(todayTokens)]
+  ];
+  metrics.forEach(([name, value], index) => {
+    const center = 28 + (index + 0.5) * (544 / 3);
+    label(name, center, 284, 'center');
+    text(value, center, 305, 23, 760, 'center');
+    if (index < 2) line(28 + (index + 1) * (544 / 3), 282, 28 + (index + 1) * (544 / 3), 332, 1, palette.line);
+  });
+}
+
+function drawModelCard(x, y, title, model, tokenMax, fill) {
+  card(x, y, 264, 112, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label(title, x + 16, y + 14);
+  text(fmtTokens(model.tokens), x + 16, y + 35, 27, 780);
+  text('tokens', x + 16, y + 69, 10, 500, 'left', palette.secondary);
+  text(fmtMoney(model.cost), x + 248, y + 15, 17, 700, 'right');
+  text(model.cacheRate == null ? '缓存率 —' : `缓存率 ${fmtPercent(model.cacheRate)}`, x + 248, y + 43, 10, 500, 'right', palette.secondary);
+  horizontalBar(x + 16, y + 88, 232, 8, model.tokens == null ? 0 : model.tokens / tokenMax, fill);
+}
+
+function verticalBar(x, baseline, width, height, fill) {
+  card(x, baseline - height, width, height, { fill, radius: Math.min(6, width / 4) });
+}
+
+function drawComposition(flash, pro) {
+  card(28, 486, 544, 128, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label('今日构成', 44, 500);
+  text('Flash 与 Pro', 556, 500, 10, 500, 'right', palette.secondary);
+
+  const groups = [
+    { x: 52, title: 'TOKEN', flash: flash.tokens, pro: pro.tokens, formatter: fmtTokens },
+    { x: 316, title: '费用', flash: flash.cost, pro: pro.cost, formatter: fmtMoney }
+  ];
+
+  for (const group of groups) {
+    label(group.title, group.x, 526);
+    const max = Math.max(group.flash || 0, group.pro || 0, 1);
+    const baseline = 589;
+    line(group.x, baseline, group.x + 210, baseline, 1, palette.mid);
+    const flashHeight = group.flash == null ? 0 : Math.max(3, 47 * group.flash / max);
+    const proHeight = group.pro == null ? 0 : Math.max(3, 47 * group.pro / max);
+    verticalBar(group.x + 38, baseline, 36, flashHeight, palette.black);
+    verticalBar(group.x + 128, baseline, 36, proHeight, palette.mid);
+    text(group.formatter(group.flash), group.x + 56, baseline - flashHeight - 15, 9, 600, 'center', palette.secondary);
+    text(group.formatter(group.pro), group.x + 146, baseline - proHeight - 15, 9, 600, 'center', palette.secondary);
+    text('F', group.x + 56, 593, 10, 700, 'center');
+    text('P', group.x + 146, 593, 10, 700, 'center');
+  }
+  line(298, 520, 298, 600, 1, palette.line);
+}
+
+function drawCache(cacheRate, ds) {
+  card(28, 628, 544, 62, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label('CACHE HIT', 44, 640);
+  text(fmtPercent(cacheRate), 556, 635, 24, 760, 'right');
+  horizontalBar(44, 669, 512, 8, cacheRate == null ? 0 : cacheRate / 100, palette.black);
+
+  const codexTime = timeOnly(state.codex?.capturedAt);
+  const deepseekTime = timeOnly(ds.capturedAt);
+  text(`Codex ${codexTime}  ·  DeepSeek ${deepseekTime}`, 300, 699, 10, 500, 'center', palette.secondary);
 }
 
 function render() {
-  ctx.fillStyle = '#fff';
+  setFill(palette.paper);
   ctx.fillRect(0, 0, 600, 800);
-  ctx.fillStyle = '#000';
-  ctx.strokeStyle = '#000';
 
-  text('AI 用量', 28, 17, 34, true);
-  text(`更新 ${new Date().toLocaleString()}`, 572, 25, 11, false, 'right');
-  line(28, 69, 572, 69, 4);
+  text('AI 用量', 28, 20, 32, 800);
+  text('TOKEN ON KINDLE', 30, 55, 10, 650, 'left', palette.secondary);
+  text(new Date().toLocaleString(), 572, 28, 10, 500, 'right', palette.secondary);
+  line(28, 72, 572, 72, 2, palette.ink);
 
-  sectionTitle('Codex', 'Web Analytics', 84);
-  box(28, 116, 544, 132, 2);
   const quotas = state.codex?.quotas || [];
-  const weekly = quotas.find(q => q.id === 'weekly') || quotas[0];
-  if (weekly) {
-    const remaining = clamp(Number(weekly.remainingPercent ?? weekly.displayedPercent ?? 0), 0, 100);
-    text('本周额度剩余', 42, 132, 15, true);
-    text(`${Math.round(remaining)}%`, 555, 124, 42, true, 'right');
-    progressBar(42, 177, 516, 27, remaining / 100, 2);
-    text(`剩余 ${Math.round(remaining)}%`, 42, 211, 11);
-    text(`已用 ${Math.round(weekly.usedPercent ?? 100 - remaining)}%`, 558, 211, 11, false, 'right');
-    line(42, 229, 558, 229, 1);
-    text(`重置：${weekly.resetText || '未知'}`, 42, 232, 11);
-  } else {
-    text('尚未采集', 42, 151, 23, true);
-    text('打开 Codex Analytics 后点击“同步到 Kindle”', 42, 189, 12);
-  }
+  const weekly = quotas.find(item => item.id === 'weekly') || quotas[0];
+  drawCodex(weekly);
 
   const ds = state.deepseek || {};
-  const flash = deepSeekModel(ds, 'flash');
-  const pro = deepSeekModel(ds, 'pro');
-  const todayTokens = valueOf(ds.todayTokens) ?? ((flash.tokens || 0) + (pro.tokens || 0) || null);
-  const todayCost = valueOf(ds.todayCost) ?? ((flash.cost || 0) + (pro.cost || 0) || null);
-  const cacheRate = valueOf(ds.cacheRate);
-  const tokenScale = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
+  const flash = modelData(ds, 'flash');
+  const pro = modelData(ds, 'pro');
+  const todayTokens = valueOf(ds.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
+  const todayCost = valueOf(ds.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
+  const cacheRate = valueOf(ds.cacheRate) ?? ([flash.cacheRate, pro.cacheRate].filter(value => value != null).length ? ((flash.cacheRate || 0) + (pro.cacheRate || 0)) / [flash.cacheRate, pro.cacheRate].filter(value => value != null).length : null);
 
-  sectionTitle('DeepSeek API', '今日用量', 270);
-  box(28, 302, 544, 74, 2);
-  statColumn('账户余额', fmtMoney(ds.balance), 42, 314);
-  statColumn('今日费用', fmtMoney(todayCost), 300, 314, 'center');
-  statColumn('今日 Token', fmtTokens(todayTokens), 558, 314, 'right');
-  line(200, 312, 200, 366, 1);
-  line(400, 312, 400, 366, 1);
+  drawSummary(ds, todayCost, todayTokens);
+  const tokenMax = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
+  drawModelCard(28, 358, 'V4 FLASH', flash, tokenMax, palette.black);
+  drawModelCard(308, 358, 'V4 PRO', pro, tokenMax, palette.mid);
+  drawComposition(flash, pro);
+  drawCache(cacheRate, ds);
 
-  drawModelRow(390, 'V4 Flash', flash, tokenScale);
-  drawModelRow(474, 'V4 Pro', pro, tokenScale);
-
-  box(28, 558, 544, 82, 2);
-  text('缓存命中率', 42, 571, 16, true);
-  text(fmtPercent(cacheRate), 558, 566, 30, true, 'right');
-  progressBar(42, 607, 516, 22, cacheRate == null ? 0 : cacheRate / 100, 2);
-
-  box(28, 655, 544, 69, 1);
-  text('采集状态', 42, 666, 13, true);
-  const codexTime = state.codex?.capturedAt ? new Date(state.codex.capturedAt).toLocaleTimeString() : '未连接';
-  const deepseekTime = ds.capturedAt ? new Date(ds.capturedAt).toLocaleTimeString() : '未连接';
-  text(`Codex ${codexTime}`, 42, 692, 11);
-  text(`DeepSeek ${deepseekTime}`, 558, 692, 11, false, 'right');
-
-  line(28, 744, 572, 744, 3);
-  box(28, 760, 48, 21, 1);
-  text('AUTO', 52, 764, 11, true, 'center');
-  text('每 10 分钟同步', 86, 763, 11);
-  text('600×800 · 8 位灰度 PNG', 572, 763, 11, false, 'right');
+  // Kindle 在屏保底部叠加白色“滑动以解锁”。这里故意保留纯黑安全区，
+  // 不放任何应用文字，使系统白字在各种固件上都保持清晰。
+  setFill(palette.black);
+  ctx.fillRect(0, 720, 600, 80);
 }
 
 async function publish() {
@@ -175,7 +252,7 @@ async function load() {
   state = await invoke('get_status');
   const url = await invoke('get_dashboard_url');
   document.querySelector('#url').textContent = url;
-  document.querySelector('#service').textContent = '后台服务已运行';
+  document.querySelector('#service').textContent = '后台采集已启动 · 每 10 分钟更新';
   updateUi();
   await listen('metrics-updated', event => {
     state = event.payload;
@@ -183,13 +260,30 @@ async function load() {
   });
 }
 
-function openInCurrentWebview(url) {
-  document.querySelector('#service').textContent = '正在打开登录页…';
-  window.location.assign(url);
+async function openSource(source) {
+  document.querySelector('#service').textContent = `正在打开 ${source === 'codex' ? 'Codex' : 'DeepSeek'}…`;
+  try {
+    await invoke?.('open_source', { source });
+    document.querySelector('#service').textContent = '后台采集已启动 · 每 10 分钟更新';
+  } catch (error) {
+    document.querySelector('#service').textContent = `打开失败：${error}`;
+  }
 }
 
-document.querySelector('#open-codex').onclick = () => openInCurrentWebview(CODEX_URL);
-document.querySelector('#open-deepseek').onclick = () => openInCurrentWebview(DEEPSEEK_URL);
-document.querySelector('#refresh').onclick = () => publish();
+async function refreshNow() {
+  document.querySelector('#service').textContent = '正在刷新两个用量页面…';
+  try {
+    await invoke?.('refresh_sources');
+    setTimeout(() => {
+      document.querySelector('#service').textContent = '已触发刷新，等待页面返回数据';
+    }, 500);
+  } catch (error) {
+    document.querySelector('#service').textContent = `刷新失败：${error}`;
+  }
+}
+
+document.querySelector('#open-codex').onclick = () => openSource('codex');
+document.querySelector('#open-deepseek').onclick = () => openSource('deepseek');
+document.querySelector('#refresh').onclick = refreshNow;
 document.querySelector('#copy').onclick = () => navigator.clipboard.writeText(document.querySelector('#url').textContent);
 load();
