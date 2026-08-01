@@ -12,4 +12,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm test
+      - name: Run parser and PNG tests
+        run: npm test
+      - name: Check frontend syntax
+        run: |
+          node --check web/app.js
+          node --check web/extractor.js
+          node --check web/core.mjs
