@@ -10,7 +10,6 @@ const palette = {
   paper: '#ffffff',
   ink: '#111111',
   secondary: '#5f5f5f',
-  soft: '#ededeb',
   softer: '#f6f6f3',
   mid: '#9a9a96',
   line: '#c8c8c3',
@@ -30,6 +29,10 @@ const fmtTokens = value => {
   if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
   return Math.round(n).toLocaleString();
+};
+const fmtInteger = value => {
+  const n = valueOf(value);
+  return n == null ? '—' : Math.round(n).toLocaleString();
 };
 const fmtMoney = value => {
   const n = valueOf(value);
@@ -114,7 +117,6 @@ function drawCodex(weekly) {
     text('打开 Codex Analytics 完成登录', 46, 168, 13, 400, 'left', palette.secondary);
     return;
   }
-
   const remaining = clamp(Number(weekly.remainingPercent ?? weekly.displayedPercent ?? 0), 0, 100);
   text('本周剩余', 46, 124, 15, 650, 'left', palette.secondary);
   text(`${Math.round(remaining)}%`, 554, 115, 46, 800, 'right');
@@ -123,15 +125,14 @@ function drawCodex(weekly) {
   text(weekly.resetText ? `重置 ${weekly.resetText}` : '重置时间未知', 554, 202, 11, 500, 'right', palette.secondary);
 }
 
-function drawSummary(ds, todayCost, todayTokens) {
-  label('DEEPSEEK · TODAY', 34, 252);
-  text(ds.date || '今日', 566, 250, 11, 500, 'right', palette.secondary);
+function drawSummary(ds, cost, tokens, dailyMode) {
+  label(dailyMode ? 'DEEPSEEK · TODAY' : 'DEEPSEEK · FILTER RANGE', 34, 252);
+  text(dailyMode ? (ds.date || '今日') : '当前筛选范围', 566, 250, 11, 500, 'right', palette.secondary);
   card(28, 270, 544, 74, { fill: palette.softer, stroke: palette.line, radius: 14 });
-
   const metrics = [
     ['余额', fmtMoney(ds.balance)],
-    ['今日费用', fmtMoney(todayCost)],
-    ['今日 Token', fmtTokens(todayTokens)]
+    [dailyMode ? '今日费用' : '范围费用', fmtMoney(cost)],
+    [dailyMode ? '今日 Token' : '范围 Token', fmtTokens(tokens)]
   ];
   metrics.forEach(([name, value], index) => {
     const center = 28 + (index + 0.5) * (544 / 3);
@@ -159,12 +160,10 @@ function drawComposition(flash, pro) {
   card(28, 486, 544, 128, { fill: palette.softer, stroke: palette.line, radius: 14 });
   label('今日构成', 44, 500);
   text('Flash 与 Pro', 556, 500, 10, 500, 'right', palette.secondary);
-
   const groups = [
     { x: 52, title: 'TOKEN', flash: flash.tokens, pro: pro.tokens, formatter: fmtTokens },
     { x: 316, title: '费用', flash: flash.cost, pro: pro.cost, formatter: fmtMoney }
   ];
-
   for (const group of groups) {
     label(group.title, group.x, 526);
     const max = Math.max(group.flash || 0, group.pro || 0, 1);
@@ -182,12 +181,38 @@ function drawComposition(flash, pro) {
   line(298, 520, 298, 600, 1, palette.line);
 }
 
-function drawCache(cacheRate, ds) {
-  card(28, 628, 544, 62, { fill: palette.softer, stroke: palette.line, radius: 14 });
-  label('CACHE HIT', 44, 640);
-  text(fmtPercent(cacheRate), 556, 635, 24, 760, 'right');
-  horizontalBar(44, 669, 512, 8, cacheRate == null ? 0 : cacheRate / 100, palette.black);
+function drawRangeDetails(ds) {
+  const requests = valueOf(ds.range?.requests);
+  const tokens = valueOf(ds.range?.tokens);
+  const average = requests && tokens != null ? tokens / requests : null;
 
+  card(28, 358, 264, 112, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label('API REQUESTS', 44, 372);
+  text(fmtInteger(requests), 44, 398, 31, 780);
+  text('当前筛选范围', 44, 442, 10, 500, 'left', palette.secondary);
+
+  card(308, 358, 264, 112, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label('AVG TOKEN / REQUEST', 324, 372);
+  text(fmtTokens(average), 324, 398, 31, 780);
+  text('总 Token ÷ 请求数', 324, 442, 10, 500, 'left', palette.secondary);
+
+  card(28, 486, 544, 128, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label('今日 Flash / Pro 明细', 44, 500);
+  text('正在从图表与页面响应中同步', 44, 530, 21, 720);
+  text('范围总量已正常显示；今日模型拆分完成后会自动切换到构成图。', 44, 566, 12, 450, 'left', palette.secondary);
+  horizontalBar(44, 592, 512, 8, 0.28, palette.mid);
+}
+
+function drawCache(cacheRate, ds, dailyMode) {
+  card(28, 628, 544, 62, { fill: palette.softer, stroke: palette.line, radius: 14 });
+  label(dailyMode ? 'CACHE HIT' : 'SYNC STATUS', 44, 640);
+  if (dailyMode) {
+    text(fmtPercent(cacheRate), 556, 635, 24, 760, 'right');
+    horizontalBar(44, 669, 512, 8, cacheRate == null ? 0 : cacheRate / 100, palette.black);
+  } else {
+    text('范围总览已同步', 556, 637, 17, 700, 'right');
+    horizontalBar(44, 669, 512, 8, 1, palette.black);
+  }
   const codexTime = timeOnly(state.codex?.capturedAt);
   const deepseekTime = timeOnly(ds.capturedAt);
   text(`Codex ${codexTime}  ·  DeepSeek ${deepseekTime}`, 300, 699, 10, 500, 'center', palette.secondary);
@@ -196,7 +221,6 @@ function drawCache(cacheRate, ds) {
 function render() {
   setFill(palette.paper);
   ctx.fillRect(0, 0, 600, 800);
-
   text('AI 用量', 28, 20, 32, 800);
   text('TOKEN ON KINDLE', 30, 55, 10, 650, 'left', palette.secondary);
   text(new Date().toLocaleString(), 572, 28, 10, 500, 'right', palette.secondary);
@@ -212,16 +236,21 @@ function render() {
   const todayTokens = valueOf(ds.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
   const todayCost = valueOf(ds.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
   const cacheRate = valueOf(ds.cacheRate) ?? ([flash.cacheRate, pro.cacheRate].filter(value => value != null).length ? ((flash.cacheRate || 0) + (pro.cacheRate || 0)) / [flash.cacheRate, pro.cacheRate].filter(value => value != null).length : null);
+  const dailyMode = [todayTokens, todayCost, flash.tokens, pro.tokens, flash.cost, pro.cost, cacheRate].some(value => value != null);
+  const displayCost = dailyMode ? todayCost : valueOf(ds.range?.cost);
+  const displayTokens = dailyMode ? todayTokens : valueOf(ds.range?.tokens);
 
-  drawSummary(ds, todayCost, todayTokens);
-  const tokenMax = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
-  drawModelCard(28, 358, 'V4 FLASH', flash, tokenMax, palette.black);
-  drawModelCard(308, 358, 'V4 PRO', pro, tokenMax, palette.mid);
-  drawComposition(flash, pro);
-  drawCache(cacheRate, ds);
+  drawSummary(ds, displayCost, displayTokens, dailyMode);
+  if (dailyMode) {
+    const tokenMax = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
+    drawModelCard(28, 358, 'V4 FLASH', flash, tokenMax, palette.black);
+    drawModelCard(308, 358, 'V4 PRO', pro, tokenMax, palette.mid);
+    drawComposition(flash, pro);
+  } else {
+    drawRangeDetails(ds);
+  }
+  drawCache(cacheRate, ds, dailyMode);
 
-  // Kindle 在屏保底部叠加白色“滑动以解锁”。这里故意保留纯黑安全区，
-  // 不放任何应用文字，使系统白字在各种固件上都保持清晰。
   setFill(palette.black);
   ctx.fillRect(0, 720, 600, 80);
 }
