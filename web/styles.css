@@ -16,7 +16,7 @@ body {
     #ecece9;
 }
 
-button, summary { font: inherit; }
+button, summary, input { font: inherit; }
 button { cursor: pointer; }
 
 .app-shell {
@@ -94,7 +94,8 @@ h1 {
 
 .source-button,
 .refresh-button,
-.copy-button {
+.copy-button,
+.save-button {
   border: 1px solid #bdbdb8;
   border-radius: 12px;
   transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
@@ -102,7 +103,8 @@ h1 {
 
 .source-button:hover,
 .refresh-button:hover,
-.copy-button:hover {
+.copy-button:hover,
+.save-button:hover {
   transform: translateY(-1px);
   border-color: #777772;
   box-shadow: 0 8px 18px rgba(0,0,0,.08);
@@ -209,8 +211,15 @@ canvas {
   padding: 20px;
 }
 
+.url-label {
+  margin: 16px 0 7px;
+  color: #4f4f4b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .url-box {
-  margin: 17px 0 12px;
+  margin: 0 0 12px;
   padding: 13px 14px;
   border: 1px solid #cecec8;
   border-radius: 10px;
@@ -225,12 +234,25 @@ canvas {
   line-height: 1.55;
 }
 
+.compact-url { padding: 10px 12px; }
+.secondary-url {
+  margin-top: 18px;
+  padding-top: 2px;
+  border-top: 1px solid #e0e0dc;
+}
+
 .copy-button {
   width: 100%;
   padding: 11px 14px;
   background: #fff;
   color: #1a1a1a;
   font-weight: 700;
+}
+
+.secondary-button {
+  padding: 9px 12px;
+  color: #555550;
+  font-size: 12px;
 }
 
 .help-text {
@@ -243,6 +265,50 @@ canvas {
 .help-text code {
   color: #222;
   font-weight: 700;
+}
+
+.interval-label {
+  display: block;
+  margin-top: 16px;
+  color: #555550;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.interval-control {
+  display: grid;
+  grid-template-columns: 1fr 94px;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.interval-input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #bdbdb8;
+  border-radius: 12px;
+  background: #fff;
+  color: #181818;
+  font-weight: 700;
+}
+
+.interval-input:focus {
+  outline: 2px solid #555;
+  outline-offset: 2px;
+}
+
+.save-button {
+  padding: 10px 14px;
+  background: #181818;
+  color: #fff;
+  font-weight: 700;
+}
+
+.interval-status {
+  margin: 10px 0 2px;
+  color: #5f5f5a;
+  font-size: 12px;
 }
 
 .schedule-row {
@@ -259,9 +325,7 @@ canvas {
 .schedule-row:first-of-type { margin-top: 15px; }
 .schedule-row strong { color: #181818; font-size: 13px; }
 
-.debug-panel {
-  overflow: hidden;
-}
+.debug-panel { overflow: hidden; }
 
 .debug-panel summary {
   padding: 15px 18px;
