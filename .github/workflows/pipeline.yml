@@ -1,0 +1,329 @@
+name: Build and release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pipeline.yml'
+      - 'src-tauri/**'
+      - 'web/**'
+      - 'shared/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'koreader/**'
+      - 'package.json'
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, for example v0.5.1; leave empty for package.json version'
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: 'Build every platform and publish a GitHub Release'
+        required: false
+        default: true
+        type: boolean
+      prerelease:
+        description: 'Mark the GitHub Release as a prerelease'
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version such as v0.5.1; empty uses package.json'
+        required: false
+        default: ''
+        type: string
+      publish:
+        description: 'Build every platform and publish a GitHub Release'
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: 'Mark the GitHub Release as a prerelease'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pipeline-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    name: Resolve pipeline mode
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      publish: ${{ steps.meta.outputs.publish }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve version and release mode
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="v$(node -p "require('./package.json').version")"
+
+          if [[ '${{ github.event_name }}' == 'workflow_call' ]]; then
+            version='${{ inputs.version }}'
+            publish='${{ inputs.publish }}'
+            prerelease='${{ inputs.prerelease }}'
+          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
+            version='${{ inputs.version }}'
+            publish='${{ inputs.publish }}'
+            prerelease='${{ inputs.prerelease }}'
+          elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
+            version='${{ github.ref_name }}'
+            publish='true'
+            prerelease='false'
+          else
+            version="$package_version"
+            publish='false'
+            prerelease='false'
+          fi
+
+          [[ -n "$version" ]] || version="$package_version"
+          [[ "$version" == v* ]] || version="v$version"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version must look like v0.5.1; got $version" >&2
+            exit 1
+          fi
+          if [[ "$publish" != 'true' && "$publish" != 'false' ]]; then
+            echo "publish must be true or false" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Resolved $version (publish=$publish, prerelease=$prerelease)"
+
+  tests:
+    name: Core and frontend checks
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run parser, PNG, renderer, workflow, and JavaScript checks
+        run: npm test
+      - name: Install Lua 5.1 syntax checker
+        run: sudo apt-get update && sudo apt-get install -y lua5.1
+      - name: Check KOReader plugin syntax
+        run: |
+          luac5.1 -p koreader/tokenonkindle.koplugin/main.lua
+          luac5.1 -p koreader/tokenonkindle.koplugin/_meta.lua
+
+  windows:
+    name: Windows portable EXE
+    needs: [prepare, tests]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Synchronize application version
+        shell: bash
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+      - name: Install dependencies
+        run: npm install
+      - name: Build portable executable
+        run: npm run build -- --no-bundle
+      - name: Stage validation executable
+        if: needs.prepare.outputs.publish != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item src-tauri/target/release/token-on-kindle.exe artifact/Token-on-Kindle.exe
+      - name: Package Windows release
+        if: needs.prepare.outputs.publish == 'true'
+        shell: pwsh
+        run: |
+          $version = '${{ needs.prepare.outputs.version }}'
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $stage = "release/Token-on-Kindle-$version-windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item src-tauri/target/release/token-on-kindle.exe "$stage/Token-on-Kindle.exe"
+          Copy-Item README.md "$stage/README.md"
+          Compress-Archive -Path "$stage/*" -DestinationPath "release/Token-on-Kindle-$version-windows-x64.zip" -Force
+          $hash = (Get-FileHash "release/Token-on-Kindle-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  Token-on-Kindle-$version-windows-x64.zip" | Out-File "release/Token-on-Kindle-$version-windows-x64.sha256" -Encoding ascii
+      - name: Upload validation executable
+        if: needs.prepare.outputs.publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Token-on-Kindle-windows-portable
+          path: artifact/Token-on-Kindle.exe
+          if-no-files-found: error
+      - name: Upload Windows release payload
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: release/*
+          if-no-files-found: error
+
+  desktop-release:
+    name: ${{ matrix.platform }} release
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos-arm64
+          - os: ubuntu-22.04
+            platform: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Synchronize application version
+        shell: bash
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Install dependencies
+        run: npm install
+      - name: Build macOS application bundle
+        if: runner.os == 'macOS'
+        run: npm run tauri build -- --bundles app --no-sign
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        run: npm run tauri build -- --bundles appimage
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          app_path=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "release/Token-on-Kindle-$version-macos-arm64.zip"
+          shasum -a 256 "release/Token-on-Kindle-$version-macos-arm64.zip" > "release/Token-on-Kindle-$version-macos-arm64.sha256"
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          cp "$appimage" "release/Token-on-Kindle-$version-linux-x64.AppImage"
+          chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
+          sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release/*
+          if-no-files-found: error
+
+  android-release:
+    name: Android arm64 release
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, tests]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Synchronize application version
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+      - name: Install dependencies
+        run: npm install
+      - name: Initialize Android project
+        run: npm run tauri android init -- --ci
+      - name: Build installable arm64 debug APK
+        run: npm run tauri android build -- --debug --apk --target aarch64
+      - name: Package Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
+          test -n "$apk"
+          cp "$apk" "release/Token-on-Kindle-$version-android-arm64-debug.apk"
+          sha256sum "release/Token-on-Kindle-$version-android-arm64-debug.apk" > "release/Token-on-Kindle-$version-android-arm64-debug.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android-arm64
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, windows, desktop-release, android-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Package KOReader plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          cd koreader
+          zip -r "../release/Token-on-Kindle-$version-koreader-plugin.zip" tokenonkindle.koplugin README.md
+          cd ../release
+          sha256sum "Token-on-Kindle-$version-koreader-plugin.zip" > "Token-on-Kindle-$version-koreader-plugin.sha256"
+      - name: Create combined checksums
+        shell: bash
+        run: |
+          cd release
+          cat *.sha256 > "Token-on-Kindle-${{ needs.prepare.outputs.version }}-SHA256SUMS.txt"
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Token on Kindle ${{ needs.prepare.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          files: |
+            release/Token-on-Kindle-*.zip
+            release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.apk
+            release/Token-on-Kindle-*-SHA256SUMS.txt
