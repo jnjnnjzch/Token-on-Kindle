@@ -37,6 +37,16 @@ fn ensure_icons() {
     }
 }
 
+fn generate_version_module() {
+    let version = env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION");
+    let target = manifest_dir().join("../web/version.js");
+    let content = format!(
+        "// Generated from Cargo package metadata. Do not edit manually.\nexport const APP_VERSION = {:?};\n",
+        version
+    );
+    fs::write(target, content).expect("write generated web/version.js");
+}
+
 fn generate_extractor() {
     let manifest = manifest_dir();
     let parser_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
@@ -91,7 +101,9 @@ fn main() {
     println!("cargo:rerun-if-changed=../web/extractor-base.js");
     println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
     println!("cargo:rerun-if-changed=../shared/deepseek-summary-parser.mjs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
     ensure_icons();
+    generate_version_module();
     generate_extractor();
     tauri_build::build()
 }
