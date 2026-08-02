@@ -1,127 +1,39 @@
 # Token on Kindle
 
-一个轻量、跨平台的 Tauri 2 应用：在应用自己的系统 WebView 中登录 Codex Analytics 和 DeepSeek Platform，提取额度与用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并通过局域网提供固定图片地址。
+一个轻量、跨平台的 Tauri 2 应用：在应用自己的系统 WebView 中登录 Codex Analytics 和 DeepSeek Platform，采集额度与用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并在局域网同时提供屏保图片与 Kindle 浏览器页面。
 
-## 下载
+## v0.5.0 新功能
 
-正式版本发布在仓库的 **Releases** 页面，不需要进入 Actions 查找临时产物。v0.4.0 提供：
+- 控制中心可以直接设置 1–1440 分钟的自动刷新间隔；设置保存在应用 WebView 本地存储中，重启后自动恢复。
+- 后台调度器会在修改间隔后立即重新计时，不会继续等待旧周期。
+- 程序启动时自动提供完整 HTTP 页面：`http://局域网IP:端口/`，未越狱 Kindle 可直接用实验性浏览器访问。
+- 保留固定屏保图片地址：`http://局域网IP:端口/dashboard.png`。
+- 浏览器页面使用纯 HTML、无框架、无动画，并通过页面重载和防缓存参数获取最新图片，兼容较旧 Kindle 浏览器。
+- 重做底部解锁安全区：由大面积纯黑底座改为 44 像素高的中灰色中央承托区，白色“滑动以解锁”仍保持高对比度，同时释放更多空间给数据与状态信息。
 
-- Windows x64 便携 ZIP；
-- macOS Apple Silicon 应用 ZIP；
-- Linux x64 AppImage；
-- Android arm64 debug APK；
-- KOReader 插件 ZIP；
-- SHA-256 校验文件。
+## 使用方法
 
-应用启动后会检查最新 Release，并在控制中心显示对应平台的下载入口。
+1. 启动应用。
+2. 分别打开 Codex 和 DeepSeek 登录窗口并完成登录。
+3. 在控制中心选择 Kindle 分辨率、设置刷新间隔。
+4. 未越狱 Kindle 在浏览器中打开“浏览器访问地址”。
+5. KOReader、Online Screensaver 或 linkss 用户使用“屏保插件图片地址”。
 
-## 平台状态
+电脑与 Kindle 必须连接同一局域网。不要把服务端口映射到公网。
 
-- **Windows x64**：主要支持平台，托盘后台运行与便携 EXE。
-- **macOS arm64**：使用系统 WKWebView，由 macOS arm64 Runner 原生构建。
-- **Linux x64**：使用 WebKitGTK，输出 AppImage。
-- **Android arm64**：提供 debug 签名测试 APK；应用进程存活时可依次刷新 Codex 与 DeepSeek。系统挂起应用后不能保证 10 分钟后台任务持续运行，正式后台常驻仍需 Android 前台服务。
+## HTTP 地址
 
-Tauri 不捆绑 Chromium：Windows 使用 WebView2，macOS 使用 WKWebView，Linux 使用 WebKitGTK，Android 使用系统 WebView。
-
-## 登录状态与升级
-
-应用使用稳定标识：
+应用会在 `8765–8785` 中选择一个可用端口。
 
 ```text
-com.jnjnnjzch.tokenonkindle
+http://192.168.1.20:8765/               Kindle 浏览器页面
+http://192.168.1.20:8765/dashboard.png  固定 PNG 图片
+http://192.168.1.20:8765/healthz        服务状态
 ```
 
-系统 WebView 的 Cookie、localStorage 与登录资料位于操作系统为该应用分配的用户数据目录，而不是便携 EXE 所在目录。桌面便携版本升级流程：
-
-1. 从应用内或 GitHub Releases 下载新版本；
-2. 从托盘完全退出旧版本；
-3. 解压并替换应用程序；
-4. 启动新版本。
-
-该流程不会主动删除 WebView 用户数据，Codex 与 DeepSeek 通常无需重新登录。不要在升级时手工清理应用数据目录。
-
-项目不会复制、导出或上传 Chrome/Edge Cookie。第一次分别在应用的 Codex 和 DeepSeek 窗口中登录后，后续由应用自己的持久化 WebView profile 保存会话。
-
-## DeepSeek 数据来源
-
-v0.4.0 不再把图表 tooltip 当作主要数据源。已登录的 DeepSeek Platform WebView 使用其网页会话令牌读取页面自身使用的同源端点：
-
-```text
-/api/v0/users/get_user_summary
-/api/v0/usage/amount?month=...&year=...
-/api/v0/usage/cost?month=...&year=...
-```
-
-它们提供：
-
-- 账户充值余额与赠送余额；
-- 今日 Flash / Pro Token；
-- 今日 Flash / Pro 费用；
-- 缓存命中 Token、未命中 Token、输出 Token；
-- 缓存命中率与请求数；
-- 月度总费用、Token 与请求数。
-
-这里使用的是已登录 Platform 页面的会话令牌，不是模型调用用的 `sk-...` API Key。网络响应监听、ECharts 与 tooltip 读取仅作为兼容后备。
-
-## 自动采集
-
-桌面应用启动时创建 Codex 与 DeepSeek 的持久后台 WebView。登录窗口关闭时只是隐藏，不销毁登录会话。
-
-默认每 10 分钟：
-
-1. 刷新两个官方网页；
-2. 从页面与同源 Platform 用量端点提取统计；
-3. 重画所选 Kindle 分辨率的 PNG；
-4. 原子替换 HTTP 服务中的最新图片。
-
-不需要 Codex CLI、DeepSeek `sk-...` Key 或第三方云服务。
-
-## Kindle 端
-
-桌面应用会显示类似：
-
-```text
-http://192.168.1.20:8765/dashboard.png
-```
-
-### KOReader 插件
-
-从 Release 下载 KOReader 插件 ZIP，把其中的：
-
-```text
-tokenonkindle.koplugin
-```
-
-复制到：
-
-```text
-koreader/plugins/
-```
-
-重启 KOReader 后打开：
-
-```text
-工具 → Token on Kindle
-```
-
-插件支持：
-
-- 填写桌面应用给出的图片地址；
-- 立即同步；
-- 每 10/30/60 分钟自动同步；
-- 一键设为 KOReader 休眠图片；
-- 检测到 linkss 后，可同步镜像到原生 Kindle 屏保目录。
-
-详细说明见 [`koreader/README.md`](koreader/README.md)。
-
-### 原生 Kindle 屏保插件
-
-也可使用 KUAL、linkss ScreenSavers Hack 与 FalconFour/onlinescreensaverPW2，将图片地址填入 Online Screensaver 的 `IMAGE_URI`。
+根页面会使用与后台采集相同的刷新间隔自动重新载入。点击图片也可立即刷新。
 
 ## Kindle 原生分辨率
-
-控制中心可选择：
 
 | 输出尺寸 | 典型机型 |
 |---|---|
@@ -132,106 +44,48 @@ koreader/plugins/
 | 1264×1680 | Oasis 2/3 与 7 英寸 300 ppi 机型 |
 | 1860×2480 | Kindle Scribe |
 
-程序直接在目标画布上重新排版并生成 8 位灰度 PNG，不是先生成 600×800 再缩放。预览窗口始终以 600×800 比例展示，图片 URL 不随型号切换而变化。
+程序直接在目标画布上重新排版并生成 8 位灰度 PNG，不是先生成 600×800 再缩放。
 
-所有配置都保留比例化的底部纯黑安全区，让 Kindle 固件叠加的白色“滑动以解锁”保持清晰。
+## 数据来源
 
-## 架构
+Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后的 Platform 页面会话读取页面自身使用的同源接口：
 
 ```text
-shared/
-  ├─ core.mjs                         PNG 编码与基础解析
-  ├─ deepseek-platform-parser.mjs     Platform 真实响应结构解析
-  └─ DeepSeek 兼容后备解析器
-
-web/
-  ├─ 桌面控制中心
-  ├─ 高对比度电子墨水渲染器
-  ├─ Kindle 原生分辨率 profiles
-  ├─ GitHub Release 更新检测
-  └─ 注入官方页面的 extractor.js
-
-src-tauri/
-  ├─ 持久化系统 WebView 登录窗口
-  ├─ 10 分钟后台刷新线程
-  ├─ 托盘后台运行
-  └─ 0.0.0.0:8765/dashboard.png 本地 HTTP 服务
-
-koreader/tokenonkindle.koplugin/
-  ├─ 图片下载与 PNG 校验
-  ├─ KOReader 休眠屏幕配置
-  └─ 可选 linkss 镜像
+/api/v0/users/get_user_summary
+/api/v0/usage/amount?month=...&year=...
+/api/v0/usage/cost?month=...&year=...
 ```
 
-远程 Codex/DeepSeek 页面不会获得 Tauri 本地命令权限。提取脚本只把统计 JSON 编码进短暂的 document title，Rust 通过原生 title-change 回调接收；它不会读取聊天、代码或密码。
+它们用于获取余额、费用、请求数、Flash/Pro Token、缓存命中 Token、未命中 Token、输出 Token与缓存命中率。项目不需要模型调用用的 `sk-...` API Key，也不会把账号 Cookie 发送给 Kindle。
+
+## 平台与发布
+
+- Windows x64：主要支持平台，提供便携 EXE/ZIP。
+- macOS arm64：使用系统 WKWebView。
+- Linux x64：使用 WebKitGTK，发布 AppImage。
+- Android arm64：提供 debug APK；长期后台运行仍需要前台服务支持。
+- KOReader：提供插件 ZIP，可同步图片并设置为休眠屏幕。
+
+正式版本发布在 GitHub Releases。CI 只执行快速测试和 Windows 便携 EXE 验证；完整多平台打包只在 Release 标签或手动发布时运行，避免重复构建。
 
 ## 本地开发
 
-### 核心与前端测试
-
 ```bash
-npm install
-npm test
-```
-
-### Windows
-
-```powershell
 npm install
 npm test
 npm run build -- --no-bundle
 ```
 
-便携 EXE：
+Windows 便携程序输出：
 
 ```text
-src-tauri\target\release\token-on-kindle.exe
+src-tauri/target/release/token-on-kindle.exe
 ```
-
-### Linux
-
-```bash
-sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file \
-  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-npm install
-npm test
-npm run build -- --no-bundle
-```
-
-### Android
-
-```bash
-npm install
-npm run tauri android init -- --ci
-npm run tauri android build -- --debug --apk --target aarch64
-```
-
-## v0.4.0 状态
-
-- [x] Codex 周额度动态进度条；
-- [x] 不存在 5 小时额度时不生成空卡；
-- [x] DeepSeek 余额、Flash/Pro Token、费用、请求数与缓存指标；
-- [x] DeepSeek Platform 真实 amount/cost/summary 响应结构测试；
-- [x] 每 10 分钟后台刷新；
-- [x] 六种 Kindle 原生分辨率；
-- [x] 8 位灰度真 PNG 与解锁文字安全区；
-- [x] 局域网 HTTP 图片地址；
-- [x] 应用内 Release 更新检测；
-- [x] Release 标签自动同步应用版本；
-- [x] 更新后保留系统 WebView 登录资料；
-- [x] Windows、macOS、Linux 构建；
-- [x] Android arm64 debug APK 构建；
-- [x] KOReader 插件第一版；
-- [ ] Android 前台服务；
-- [ ] 正式 Android 长期签名；
-- [ ] 签名的一键安装更新器；
-- [ ] 开机自启动设置页。
 
 ## 安全边界
 
-- 默认只在局域网提供只读 PNG 和健康检查；
-- 不需要 Codex CLI；
-- 不需要 DeepSeek API Key；
-- 不使用 Cloudflare 或其他云服务；
-- 不把账号 Cookie 发送给 Kindle；
-- 不要把 8765 端口映射到公网。
+- HTTP 服务只提供只读页面、PNG 和健康检查。
+- 远程 Codex/DeepSeek 页面不会获得 Tauri 本地命令权限。
+- 登录状态保存在操作系统分配给该应用的 WebView 用户数据目录。
+- 更新程序不会主动删除登录资料。
+- 不要将局域网端口暴露到公网。
