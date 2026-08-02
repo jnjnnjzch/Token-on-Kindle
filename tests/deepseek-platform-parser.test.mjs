@@ -108,8 +108,14 @@ test('parses the actual DeepSeek amount/cost response schema by model and day', 
   assert.equal(result.todayRequests, 160);
   closeTo(result.todayCost, 3.203);
   closeTo(result.cacheRate, 13_000_000 / 16_000_000 * 100);
-  closeTo(result.account.monthlyCost, 47.09);
-  assert.equal(result.account.monthlyTokens, 178_767_054);
+  closeTo(result.account.monthlyCost, 3.203);
+  assert.equal(result.account.monthlyTokens, 16_750_000);
+  assert.equal(result.account.monthlyRequests, 160);
+  assert.deepEqual(result.diagnostics.monthlyAggregation, {
+    cost: 'summed-days',
+    tokens: 'summed-days',
+    requests: 'summed-days'
+  });
 });
 
 test('uses the latest API day when local and UTC dates are absent', () => {
@@ -136,5 +142,12 @@ test('does not turn monthly totals into Flash or Pro daily values', () => {
   assert.equal(result.models.flash.tokens, null);
   assert.equal(result.models.pro.tokens, null);
   assert.equal(result.todayTokens, null);
+  assert.equal(result.account.monthlyCost, 47.09);
   assert.equal(result.account.monthlyTokens, 178_767_054);
+  assert.equal(result.account.monthlyRequests, 1367);
+  assert.deepEqual(result.diagnostics.monthlyAggregation, {
+    cost: 'summary',
+    tokens: 'summary',
+    requests: 'summary'
+  });
 });
