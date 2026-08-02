@@ -84,12 +84,15 @@ pub(crate) fn prepare_and_spawn(
         return Err("预写入的新版本不完整，已取消更新".into());
     }
 
-    fs::copy(current_exe, &helper)
-        .map_err(|error| format!("无法创建独立更新助手：{error}"))?;
+    // The helper must be the downloaded new binary. Older installed versions do
+    // not understand HELPER_MARKER, so copying current_exe would only relaunch
+    // the old application instead of applying the update.
+    fs::copy(source_exe, &helper)
+        .map_err(|error| format!("无法创建新版本更新助手：{error}"))?;
     append_log(
         &log_path,
         format!(
-            "prepared update helper; target={}, staged={}",
+            "prepared new-version update helper; target={}, staged={}",
             current_exe.display(),
             staged.display()
         ),
@@ -164,7 +167,7 @@ fn launch_replacement(target: &Path) -> Result<(), String> {
 fn run_helper(staged: PathBuf, target: PathBuf, work_dir: PathBuf) -> Result<(), String> {
     let log_path = work_dir.join("update.log");
     let backup = target.with_extension("exe.token-on-kindle-backup");
-    append_log(&log_path, "update helper started");
+    append_log(&log_path, "new-version update helper started");
 
     let mut last_error = String::new();
     for attempt in 1..=240 {
