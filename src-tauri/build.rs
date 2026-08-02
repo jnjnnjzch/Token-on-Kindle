@@ -41,27 +41,50 @@ fn ensure_icons() {
 fn generate_extractor() {
     let manifest = manifest_dir();
     let parser_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
-    let network_path = manifest.join("../web/deepseek-network-capture.js");
+    let summary_path = manifest.join("../shared/deepseek-summary-parser.mjs");
     let base_path = manifest.join("../web/extractor-base.js");
     let target_path = manifest.join("../web/extractor.js");
 
-    let parser = fs::read_to_string(&parser_path).expect("read DeepSeek parser module");
+    let parser = fs::read_to_string(&parser_path).expect("read DeepSeek response parser module");
     let parser = parser.replace(
         "export function parseDeepSeekResponses",
         "function parseDeepSeekResponses",
     );
-    let network = fs::read_to_string(&network_path).expect("read DeepSeek network capture");
-    let base = fs::read_to_string(&base_path).expect("read extractor base");
+    let summary = fs::read_to_string(&summary_path).expect("read DeepSeek summary parser module");
+    let summary = summary.replace(
+        "export function parseDeepSeekSummaryText",
+        "function parseDeepSeekSummaryText",
+    );
+
+    let original_base = fs::read_to_string(&base_path).expect("read extractor base");
+    let old_summary_reads = r#"    const balance = cardMetric(['balance', '余额'], money);
+    const rangeCost = cardMetric(['cost', '费用', '消耗'], money);
+    const rangeTokens = cardMetric(['tokens', 'token'], numeric);
+    const rangeRequests = cardMetric(['api requests', '请求'], numeric);"#;
+    let new_summary_reads = r#"    const visibleSummary = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__?.(document.body?.innerText || '') || {};
+    const balance = visibleSummary.balance || cardMetric(['balance', '余额'], money);
+    const rangeCost = visibleSummary.cost || cardMetric(['cost', '费用', '消耗'], money);
+    const rangeTokens = visibleSummary.tokens || cardMetric(['tokens', 'token'], numeric);
+    const rangeRequests = visibleSummary.requests || cardMetric(['api requests', '请求'], numeric);"#;
+    let base = original_base.replace(old_summary_reads, new_summary_reads);
+    if base == original_base {
+        panic!("DeepSeek summary injection point changed; update build.rs instead of silently shipping a stale extractor");
+    }
+
+    let diagnostics_marker = "parser: parsed?.diagnostics || null";
+    let diagnostics_replacement = "parser: parsed?.diagnostics || null,\n        visibleSummary: visibleSummary.diagnostics || null";
+    base = base.replace(diagnostics_marker, diagnostics_replacement);
+
     let generated = format!(
-        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n{network}\n\n{base}\n"
+        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n(() => {{\n{summary}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;\n}})();\n\n{base}\n"
     );
     fs::write(target_path, generated).expect("write generated extractor");
 }
 
 fn main() {
     println!("cargo:rerun-if-changed=../web/extractor-base.js");
-    println!("cargo:rerun-if-changed=../web/deepseek-network-capture.js");
     println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
+    println!("cargo:rerun-if-changed=../shared/deepseek-summary-parser.mjs");
     ensure_icons();
     generate_extractor();
     tauri_build::build()
