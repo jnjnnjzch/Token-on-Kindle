@@ -15,6 +15,11 @@ const numericValue = value => {
 
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
+export function cacheRateToRatio(value) {
+  const number = numericValue(value);
+  return number == null ? 0 : clamp(number / 100);
+}
+
 const formatTokens = value => {
   const number = numericValue(value);
   if (number == null) return '—';
@@ -145,14 +150,14 @@ function drawDeepSeekSummary(ctx, deepseek, dailyMode, cost, tokens) {
   });
 }
 
-function drawModel(ctx, x, title, model, maxTokens, gray = false) {
+function drawModel(ctx, x, title, model, gray = false) {
   drawBox(ctx, x, 378, 264, 126, PALETTE.white, PALETTE.ink, 2);
   drawText(ctx, title, x + 14, 392, 15, 800);
   drawText(ctx, formatMoney(model.cost), x + 248, 392, 18, 800, 'right');
   drawText(ctx, formatTokens(model.tokens), x + 14, 424, 31, 850);
   drawText(ctx, 'TOKEN', x + 14, 462, 13, 650, 'left', PALETTE.dark);
   drawText(ctx, `缓存 ${formatPercent(model.cacheRate)}`, x + 248, 462, 13, 650, 'right', PALETTE.dark);
-  drawBar(ctx, x + 14, 482, 236, 14, model.tokens == null ? 0 : model.tokens / maxTokens, gray ? PALETTE.dark : PALETTE.ink);
+  drawBar(ctx, x + 14, 482, 236, 14, cacheRateToRatio(model.cacheRate), gray ? PALETTE.dark : PALETTE.ink);
 }
 
 function drawRangeFallback(ctx, deepseek) {
@@ -184,7 +189,7 @@ function drawCache(ctx, deepseek, flash, pro, dailyMode) {
   const cacheRate = rates.length ? rates[0] : null;
   drawText(ctx, '缓存命中率', 44, 545, 16, 750);
   drawText(ctx, formatPercent(cacheRate), 556, 540, 30, 850, 'right');
-  drawBar(ctx, 44, 586, 512, 18, cacheRate == null ? 0 : cacheRate / 100);
+  drawBar(ctx, 44, 586, 512, 18, cacheRateToRatio(cacheRate));
 }
 
 function drawFooter(ctx, state) {
@@ -215,9 +220,8 @@ export function renderKindleDashboard(ctx, state) {
 
   drawDeepSeekSummary(ctx, deepseek, dailyMode, shownCost, shownTokens);
   if (dailyMode) {
-    const maxTokens = Math.max(flash.tokens || 0, pro.tokens || 0, 1);
-    drawModel(ctx, 28, 'V4 FLASH', flash, maxTokens, false);
-    drawModel(ctx, 308, 'V4 PRO', pro, maxTokens, true);
+    drawModel(ctx, 28, 'V4 FLASH', flash, false);
+    drawModel(ctx, 308, 'V4 PRO', pro, true);
   } else {
     drawRangeFallback(ctx, deepseek);
   }
