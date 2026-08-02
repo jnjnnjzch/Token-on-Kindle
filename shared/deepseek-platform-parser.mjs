@@ -91,6 +91,44 @@ function costBreakdown(items) {
   return { cost, hasCostData };
 }
 
+function aggregateTokenDays(days) {
+  const result = {
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
+    outputTokens: 0,
+    requests: 0,
+    tokens: 0,
+    hasTokenData: false,
+    hasRequestData: false
+  };
+  for (const day of days || []) {
+    for (const model of day?.data || []) {
+      const current = tokenBreakdown(model?.usage);
+      result.cacheHitTokens += current.cacheHitTokens;
+      result.cacheMissTokens += current.cacheMissTokens;
+      result.outputTokens += current.outputTokens;
+      result.requests += current.requests;
+      result.tokens += current.tokens;
+      result.hasTokenData ||= current.hasTokenData;
+      result.hasRequestData ||= current.hasRequestData;
+    }
+  }
+  return result;
+}
+
+function aggregateCostDays(days) {
+  let cost = 0;
+  let hasCostData = false;
+  for (const day of days || []) {
+    for (const model of day?.data || []) {
+      const current = costBreakdown(model?.usage);
+      cost += current.cost;
+      hasCostData ||= current.hasCostData;
+    }
+  }
+  return { cost, hasCostData };
+}
+
 function parseBalance(summaryBody) {
   const summary = unwrap(summaryBody, 'summary');
   if (!summary || typeof summary !== 'object' || Array.isArray(summary)) throw new Error('summary: malformed biz_data');
@@ -167,6 +205,12 @@ export function parseDeepSeekPlatformPayloads({ summaryBody, amountBody, costBod
   }
 
   const balance = parseBalance(summaryBody);
+  const monthlyTokenTotals = aggregateTokenDays(amountDays);
+  const monthlyCostTotals = aggregateCostDays(costDays);
+  const monthlyCost = monthlyCostTotals.hasCostData ? monthlyCostTotals.cost : balance.monthlyCost;
+  const monthlyTokens = monthlyTokenTotals.hasTokenData ? monthlyTokenTotals.tokens : balance.monthlyTokens;
+  const monthlyRequests = monthlyTokenTotals.hasRequestData ? monthlyTokenTotals.requests : balance.monthlyRequests;
+
   return {
     date,
     balance: { value: balance.value, currency: balance.currency, toppedUp: balance.toppedUp, granted: balance.granted },
@@ -176,17 +220,22 @@ export function parseDeepSeekPlatformPayloads({ summaryBody, amountBody, costBod
     cacheRate: totalHit + totalMiss > 0 ? totalHit / (totalHit + totalMiss) * 100 : null,
     models,
     account: {
-      monthlyCost: balance.monthlyCost,
+      monthlyCost,
       cumulativeCost: balance.cumulativeCost,
-      monthlyTokens: balance.monthlyTokens,
-      monthlyRequests: balance.monthlyRequests
+      monthlyTokens,
+      monthlyRequests
     },
     diagnostics: {
       source: 'platform-internal-api',
       selectedDate: date,
       amountDayCount: amountDays.length,
       costDayCount: costDays.length,
-      modelNames: [...allModelNames]
+      modelNames: [...allModelNames],
+      monthlyAggregation: {
+        cost: monthlyCostTotals.hasCostData ? 'summed-days' : balance.monthlyCost != null ? 'summary' : 'missing',
+        tokens: monthlyTokenTotals.hasTokenData ? 'summed-days' : balance.monthlyTokens != null ? 'summary' : 'missing',
+        requests: monthlyTokenTotals.hasRequestData ? 'summed-days' : balance.monthlyRequests != null ? 'summary' : 'missing'
+      }
     }
   };
 }
