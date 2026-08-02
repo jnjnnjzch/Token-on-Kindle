@@ -1,8 +1,5 @@
 use std::{env, fs, path::PathBuf};
 
-// A compact 32×32 RGBA PNG wrapped in a single-image ICO container. Keeping the
-// bytes in the build script makes clean checkouts buildable on every runner
-// without committing binary font or icon assets through the text-only connector.
 const ICON_ICO: &[u8] = &[
     0x00,0x00,0x01,0x00,0x01,0x00,0x20,0x20,0x00,0x00,0x00,0x00,0x20,0x00,0xaf,0x00,
     0x00,0x00,0x16,0x00,0x00,0x00,0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,
@@ -25,12 +22,10 @@ fn manifest_dir() -> PathBuf {
 fn ensure_icons() {
     let icon_dir = manifest_dir().join("icons");
     fs::create_dir_all(&icon_dir).expect("create icons directory");
-
     let ico_path = icon_dir.join("icon.ico");
     if !ico_path.exists() {
         fs::write(ico_path, ICON_ICO).expect("write generated icon.ico");
     }
-
     let png_path = icon_dir.join("icon.png");
     if !png_path.exists() {
         fs::write(png_path, &ICON_ICO[22..]).expect("write generated icon.png");
@@ -47,29 +42,45 @@ fn generate_version_module() {
     fs::write(target, content).expect("write generated web/version.js");
 }
 
+fn browser_module(path: &PathBuf, export_name: &str, local_name: &str) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_else(|_| panic!("read {}", path.display()))
+        .replace(&format!("export function {export_name}"), &format!("function {local_name}"))
+}
+
+fn replace_between(source: &str, start: &str, end: &str, replacement: &str) -> String {
+    let start_index = source.find(start).unwrap_or_else(|| panic!("missing extractor marker: {start}"));
+    let end_relative = source[start_index..]
+        .find(end)
+        .unwrap_or_else(|| panic!("missing extractor marker: {end}"));
+    let end_index = start_index + end_relative;
+    format!("{}{}{}", &source[..start_index], replacement, &source[end_index..])
+}
+
 fn generate_extractor() {
     let manifest = manifest_dir();
-    let parser_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
-    let summary_path = manifest.join("../shared/deepseek-summary-parser.mjs");
+    let generic_parser = browser_module(
+        &manifest.join("../shared/deepseek-response-parser-v2.mjs"),
+        "parseDeepSeekResponses",
+        "parseDeepSeekResponses",
+    );
+    let summary_parser = browser_module(
+        &manifest.join("../shared/deepseek-summary-parser.mjs"),
+        "parseDeepSeekSummaryText",
+        "parseDeepSeekSummaryText",
+    );
+    let platform_parser = browser_module(
+        &manifest.join("../shared/deepseek-platform-parser.mjs"),
+        "parseDeepSeekPlatformPayloads",
+        "parseDeepSeekPlatformPayloads",
+    );
+
     let base_path = manifest.join("../web/extractor-base.js");
     let target_path = manifest.join("../web/extractor.js");
-
-    let parser = fs::read_to_string(&parser_path).expect("read DeepSeek response parser module");
-    let parser = parser.replace(
-        "export function parseDeepSeekResponses",
-        "function parseDeepSeekResponses",
-    );
-    let summary = fs::read_to_string(&summary_path).expect("read DeepSeek summary parser module");
-    let summary = summary.replace(
-        "export function parseDeepSeekSummaryText",
-        "function parseDeepSeekSummaryText",
-    );
-
-    // Git for Windows may check text files out with CRLF. Normalize before the
-    // guarded replacement so the same source builds identically on all runners.
-    let original_base = fs::read_to_string(&base_path)
+    let mut base = fs::read_to_string(&base_path)
         .expect("read extractor base")
         .replace("\r\n", "\n");
+
     let old_summary_reads = r#"    const balance = cardMetric(['balance', '余额'], money);
     const rangeCost = cardMetric(['cost', '费用', '消耗'], money);
     const rangeTokens = cardMetric(['tokens', 'token'], numeric);
@@ -86,17 +97,149 @@ fn generate_extractor() {
     const rangeTokens = visibleSummary.tokens || previousSummary.tokens || cardMetric(['tokens', 'token'], numeric);
     const rangeRequests = visibleSummary.requests || previousSummary.requests || cardMetric(['api requests', '请求'], numeric);
     window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ = { balance, cost: rangeCost, tokens: rangeTokens, requests: rangeRequests };"#;
-    let mut base = original_base.replace(old_summary_reads, new_summary_reads);
-    if base == original_base {
-        panic!("DeepSeek summary injection point changed; update build.rs instead of silently shipping a stale extractor");
+    let replaced = base.replace(old_summary_reads, new_summary_reads);
+    if replaced == base {
+        panic!("DeepSeek summary injection point changed");
+    }
+    base = replaced;
+
+    let direct_collect = r#"  function deepSeekPlatformToken() {
+    const raw = localStorage.getItem('userToken');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'string' ? parsed : parsed?.value || parsed?.token || null;
+    } catch {
+      return raw;
+    }
+  }
+
+  async function deepSeekPlatformJson(path, token) {
+    const response = await fetch(path, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function fetchDeepSeekPlatformUsage() {
+    const token = deepSeekPlatformToken();
+    if (!token) throw new Error('DeepSeek Platform 登录令牌不存在');
+    const now = new Date();
+    const periods = [
+      { month: now.getMonth() + 1, year: now.getFullYear() },
+      { month: now.getUTCMonth() + 1, year: now.getUTCFullYear() }
+    ].filter((item, index, all) => all.findIndex(other => other.month === item.month && other.year === item.year) === index);
+
+    const summaryBody = await deepSeekPlatformJson('/api/v0/users/get_user_summary', token);
+    const attempts = [];
+    for (const period of periods) {
+      try {
+        const query = `month=${period.month}&year=${period.year}`;
+        const [amountBody, costBody] = await Promise.all([
+          deepSeekPlatformJson(`/api/v0/usage/amount?${query}`, token),
+          deepSeekPlatformJson(`/api/v0/usage/cost?${query}`, token)
+        ]);
+        const parsed = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__({ summaryBody, amountBody, costBody, now });
+        attempts.push(parsed);
+      } catch (error) {
+        attempts.push({ error: String(error?.message || error), date: null });
+      }
+    }
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const utcDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    const parsed = attempts.find(item => item?.date === localDate)
+      || attempts.find(item => item?.date === utcDate)
+      || attempts.filter(item => !item?.error).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    if (!parsed) throw new Error(attempts.map(item => item.error).filter(Boolean).join(' | ') || 'DeepSeek 用量响应为空');
+    parsed.diagnostics = { ...parsed.diagnostics, attempts: attempts.map(item => item.error ? { error: item.error } : { date: item.date }) };
+    return parsed;
+  }
+
+  async function collectDeepSeek() {
+    await sleep(350);
+    let visibleSummary = {};
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      visibleSummary = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__?.(document.body?.innerText || '') || {};
+      if (visibleSummary.balance && visibleSummary.cost && visibleSummary.tokens && visibleSummary.requests) break;
+      await sleep(400);
+    }
+    const previousSummary = window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ || {};
+    const balance = visibleSummary.balance || previousSummary.balance || cardMetric(['balance', '余额'], money);
+    const rangeCost = visibleSummary.cost || previousSummary.cost || cardMetric(['cost', '费用', '消耗'], money);
+    const rangeTokens = visibleSummary.tokens || previousSummary.tokens || cardMetric(['tokens', 'token'], numeric);
+    const rangeRequests = visibleSummary.requests || previousSummary.requests || cardMetric(['api requests', '请求'], numeric);
+    window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ = { balance, cost: rangeCost, tokens: rangeTokens, requests: rangeRequests };
+
+    let direct = null;
+    let directError = null;
+    try {
+      direct = await fetchDeepSeekPlatformUsage();
+    } catch (error) {
+      directError = String(error?.message || error);
     }
 
-    let diagnostics_marker = "parser: parsed?.diagnostics || null";
-    let diagnostics_replacement = "parser: parsed?.diagnostics || null,\n        visibleSummary: visibleSummary.diagnostics || null";
-    base = base.replace(diagnostics_marker, diagnostics_replacement);
+    const networkResponses = [...(window.__TOKEN_ON_KINDLE_DEEPSEEK_RESPONSES__ || [])];
+    const chart = echartsResponses();
+    let fallback = null;
+    let tooltips = [];
+    if (!direct) {
+      let combined = [...networkResponses, ...chart.responses];
+      fallback = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__?.(combined, new Date()) || null;
+      const needsTooltip = !fallback || [fallback.models?.flash?.tokens, fallback.models?.pro?.tokens, fallback.models?.flash?.cost, fallback.models?.pro?.cost].some(value => value == null);
+      if (needsTooltip) {
+        tooltips = await hoverChartsForTooltips();
+        combined = [...combined, ...tooltipResponses(tooltips)];
+        fallback = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__?.(combined, new Date()) || fallback;
+      }
+    }
+
+    const parsed = direct || fallback || {};
+    const resolvedBalance = direct?.balance || (balance ? { value: balance.value, currency: 'CNY' } : null);
+    return {
+      source,
+      capturedAt: new Date().toISOString(),
+      updateIntervalMinutes: 10,
+      url: location.href,
+      balance: resolvedBalance,
+      date: parsed.date || null,
+      todayCost: parsed.todayCost == null ? null : { value: parsed.todayCost, currency: direct?.balance?.currency || 'CNY' },
+      todayTokens: parsed.todayTokens == null ? null : { value: parsed.todayTokens },
+      todayRequests: parsed.todayRequests == null ? null : { value: parsed.todayRequests },
+      cacheRate: parsed.cacheRate == null ? null : { value: parsed.cacheRate },
+      models: parsed.models || { flash: null, pro: null },
+      account: direct?.account || null,
+      range: {
+        cost: rangeCost?.value ?? null,
+        tokens: rangeTokens?.value ?? null,
+        requests: rangeRequests?.value ?? null
+      },
+      diagnostics: {
+        primarySource: direct ? 'platform-internal-api' : 'page-fallback',
+        directError,
+        captureInstalled: Boolean(window.__TOKEN_ON_KINDLE_CAPTURE_INSTALLED__),
+        networkResponseCount: networkResponses.length,
+        chartCount: chart.chartCount,
+        tooltipCount: tooltips.length,
+        parser: parsed.diagnostics || null,
+        visibleSummary: visibleSummary.diagnostics || null
+      }
+    };
+  }
+
+"#;
+    base = replace_between(
+        &base,
+        "  async function collectDeepSeek() {",
+        "  let collecting = false;",
+        direct_collect,
+    );
 
     let generated = format!(
-        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n(() => {{\n{summary}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;\n}})();\n\n{base}\n"
+        "(() => {{\n{generic_parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n(() => {{\n{summary_parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;\n}})();\n\n(() => {{\n{platform_parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__ = parseDeepSeekPlatformPayloads;\n}})();\n\n{base}\n"
     );
     fs::write(target_path, generated).expect("write generated extractor");
 }
@@ -105,6 +248,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../web/extractor-base.js");
     println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
     println!("cargo:rerun-if-changed=../shared/deepseek-summary-parser.mjs");
+    println!("cargo:rerun-if-changed=../shared/deepseek-platform-parser.mjs");
     println!("cargo:rerun-if-changed=Cargo.toml");
     ensure_icons();
     generate_version_module();
