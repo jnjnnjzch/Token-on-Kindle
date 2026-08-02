@@ -8,10 +8,14 @@ use std::{
     time::Duration,
 };
 use tauri::{
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
@@ -33,6 +37,8 @@ struct AppState {
     metrics: Mutex<MetricsState>,
     png: Arc<RwLock<Vec<u8>>>,
     port: u16,
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    mobile_refresh: Mutex<bool>,
 }
 
 fn timestamp() -> String {
@@ -44,26 +50,51 @@ fn timestamp() -> String {
         .to_string()
 }
 
-fn validate_png(bytes: &[u8]) -> Result<(), String> {
+fn profile_dimensions(profile: &str) -> Option<(u32, u32)> {
+    match profile {
+        "kindle-600x800" => Some((600, 800)),
+        "kindle-758x1024" => Some((758, 1024)),
+        "kindle-1072x1448" => Some((1072, 1448)),
+        "kindle-1236x1648" => Some((1236, 1648)),
+        "kindle-1264x1680" => Some((1264, 1680)),
+        "kindle-1860x2480" => Some((1860, 2480)),
+        _ => None,
+    }
+}
+
+fn validate_png(bytes: &[u8], profile: &str) -> Result<(), String> {
     const SIG: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
     if bytes.len() < 33 || &bytes[..8] != SIG {
         return Err("不是有效的 PNG 文件".into());
     }
+
+    let (expected_width, expected_height) = profile_dimensions(profile)
+        .ok_or_else(|| format!("不支持的 Kindle 屏幕配置：{profile}"))?;
     let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
     let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
     let bit_depth = bytes[24];
     let color_type = bytes[25];
-    if (width, height, bit_depth, color_type) != (600, 800, 8, 0) {
+
+    if (width, height) != (expected_width, expected_height) {
         return Err(format!(
-            "需要 600×800、8 位灰度 PNG；实际为 {width}×{height}, bitDepth={bit_depth}, colorType={color_type}"
+            "配置 {profile} 需要 {expected_width}×{expected_height}；实际为 {width}×{height}"
+        ));
+    }
+    if (bit_depth, color_type) != (8, 0) {
+        return Err(format!(
+            "Kindle 图片必须是 8 位灰度 PNG；实际 bitDepth={bit_depth}, colorType={color_type}"
         ));
     }
     Ok(())
 }
 
 #[tauri::command]
-fn set_dashboard_png(bytes: Vec<u8>, state: State<'_, AppState>) -> Result<(), String> {
-    validate_png(&bytes)?;
+fn set_dashboard_png(
+    bytes: Vec<u8>,
+    profile: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    validate_png(&bytes, &profile)?;
     *state.png.write().map_err(|_| "PNG 锁已损坏")? = bytes;
     Ok(())
 }
@@ -156,8 +187,15 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn reload_sources(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    *state
+        .mobile_refresh
+        .lock()
+        .map_err(|_| "移动端刷新状态锁已损坏")? = true;
     let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
-    window.eval("location.reload()").map_err(|error| error.to_string())
+    window
+        .navigate(CODEX_URL.parse().map_err(|error| format!("URL 错误: {error}"))?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -165,7 +203,6 @@ async fn refresh_sources(app: AppHandle) -> Result<(), String> {
     reload_sources(&app)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn start_refresh_scheduler(app: AppHandle) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(REFRESH_SECONDS));
@@ -210,6 +247,10 @@ fn dashboard_app_url() -> &'static str {
 fn return_to_dashboard(window: &WebviewWindow) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
+        let state = window.app_handle().state::<AppState>();
+        if let Ok(mut active) = state.mobile_refresh.lock() {
+            *active = false;
+        }
         if let Ok(url) = dashboard_app_url().parse() {
             let _ = window.navigate(url);
         }
@@ -259,6 +300,26 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
         metrics.clone()
     };
     let _ = app.emit_to("main", "metrics-updated", snapshot);
+
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        let active = state
+            .mobile_refresh
+            .lock()
+            .map(|value| *value)
+            .unwrap_or(false);
+        if active {
+            match source {
+                "codex" => {
+                    if let Ok(url) = DEEPSEEK_URL.parse() {
+                        let _ = window.navigate(url);
+                    }
+                }
+                "deepseek" => return_to_dashboard(window),
+                _ => {}
+            }
+        }
+    }
 }
 
 fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>) {
@@ -401,6 +462,8 @@ pub fn run() {
             metrics: Mutex::new(MetricsState::default()),
             png,
             port,
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            mobile_refresh: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![
             set_dashboard_png,
@@ -414,15 +477,17 @@ pub fn run() {
                 .title("Token on Kindle")
                 .inner_size(1080.0, 760.0)
                 .min_inner_size(760.0, 580.0)
+                .initialization_script(EXTRACTOR_SCRIPT)
+                .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
 
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 create_source_window(app, "codex")?;
                 create_source_window(app, "deepseek")?;
-                start_refresh_scheduler(app.handle().clone());
             }
 
+            start_refresh_scheduler(app.handle().clone());
             build_tray(app)?;
             Ok(())
         })

@@ -8,6 +8,8 @@ on:
       - 'src-tauri/**'
       - 'web/**'
       - 'shared/**'
+      - 'tests/**'
+      - 'tools/**'
       - 'koreader/**'
       - 'package.json'
   push:
@@ -18,10 +20,11 @@ on:
       - 'package.json'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/tauri.conf.json'
+      - 'tools/sync-version.mjs'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.3.0'
+        description: 'Release version, for example v0.4.0'
         required: true
         type: string
       prerelease:
@@ -40,12 +43,16 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve version from tag or dispatch input
         id: meta
         shell: bash
         run: |
           if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
-            version='v0.3.0-pr${{ github.event.number }}'
+            package_version=$(node -p "require('./package.json').version")
+            version="v${package_version}-pr${{ github.event.number }}"
           elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
             version='${{ inputs.version }}'
           elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
@@ -55,10 +62,11 @@ jobs:
             version="v${package_version}"
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must look like v0.3.0; got $version" >&2
+            echo "Version must look like v0.4.0; got $version" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: $version"
 
   build:
     needs: prepare
@@ -79,6 +87,14 @@ jobs:
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Synchronize application version from Release tag
+        shell: bash
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+
+      - name: Verify synchronized version
+        shell: bash
+        run: node tools/check-version-sync.mjs
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -144,15 +160,64 @@ jobs:
           chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
           sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
 
-      - name: Upload platform payload
+      - name: Upload desktop payload
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}
           path: release/*
           if-no-files-found: error
 
+  android:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Synchronize application version from Release tag
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Test shared core and extractors
+        run: npm test
+
+      - name: Initialize Android project
+        run: npm run tauri android init -- --ci
+
+      - name: Build installable arm64 debug APK
+        run: npm run tauri android build -- --debug --apk --target aarch64
+
+      - name: Package Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
+          test -n "$apk"
+          cp "$apk" "release/Token-on-Kindle-$version-android-arm64-debug.apk"
+          sha256sum "release/Token-on-Kindle-$version-android-arm64-debug.apk" > "release/Token-on-Kindle-$version-android-arm64-debug.sha256"
+
+      - name: Upload Android payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-arm64
+          path: release/*
+          if-no-files-found: error
+
   assemble:
-    needs: [prepare, build]
+    needs: [prepare, build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -188,6 +253,7 @@ jobs:
           path: |
             release/Token-on-Kindle-*.zip
             release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.apk
             release/Token-on-Kindle-*-SHA256SUMS.txt
           if-no-files-found: error
 
@@ -203,4 +269,5 @@ jobs:
           files: |
             release/Token-on-Kindle-*.zip
             release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.apk
             release/Token-on-Kindle-*-SHA256SUMS.txt

@@ -1,6 +1,7 @@
+import { APP_VERSION } from './version.js';
+
 const GITHUB_LATEST_RELEASE = 'https://api.github.com/repos/jnjnnjzch/Token-on-Kindle/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
-const FALLBACK_VERSION = '0.3.0';
 
 function normalizeVersion(value) {
   return String(value || '0.0.0').trim().replace(/^v/i, '').split('-')[0]
@@ -25,12 +26,8 @@ function platformAsset(assets = []) {
   return assets.find(asset => pattern?.test(asset.name)) || null;
 }
 
-async function currentVersion() {
-  try {
-    return await window.__TAURI__?.app?.getVersion?.() || FALLBACK_VERSION;
-  } catch {
-    return FALLBACK_VERSION;
-  }
+function currentVersion() {
+  return APP_VERSION;
 }
 
 function setStatus(message, state = 'neutral') {
@@ -58,7 +55,7 @@ async function checkForUpdates({ manual = false } = {}) {
     if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
 
     const release = await response.json();
-    const installed = await currentVersion();
+    const installed = currentVersion();
     const latest = release.tag_name || release.name || '0.0.0';
     document.querySelector('#installed-version').textContent = `当前 ${installed}`;
 
@@ -95,8 +92,7 @@ document.querySelector('#download-update')?.addEventListener('click', () => {
   setStatus('下载后退出应用，解压并覆盖旧程序；登录状态会保留。', 'available');
 });
 
+const versionTarget = document.querySelector('#installed-version');
+if (versionTarget) versionTarget.textContent = `当前 ${currentVersion()}`;
+
 if (shouldAutoCheck()) setTimeout(() => checkForUpdates(), 2500);
-else currentVersion().then(version => {
-  const target = document.querySelector('#installed-version');
-  if (target) target.textContent = `当前 ${version}`;
-});
