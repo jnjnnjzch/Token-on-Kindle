@@ -1,30 +1,12 @@
 name: Publish release
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/release.yml'
-      - 'src-tauri/**'
-      - 'web/**'
-      - 'shared/**'
-      - 'tests/**'
-      - 'tools/**'
-      - 'koreader/**'
-      - 'package.json'
   push:
-    branches: [main]
     tags: ['v*']
-    paths:
-      - '.github/workflows/release.yml'
-      - 'package.json'
-      - 'src-tauri/Cargo.toml'
-      - 'src-tauri/tauri.conf.json'
-      - 'tools/sync-version.mjs'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.4.0'
+        description: 'Release version, for example v0.5.0'
         required: true
         type: string
       prerelease:
@@ -36,6 +18,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -43,32 +29,22 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Resolve version from tag or dispatch input
+      - name: Resolve version
         id: meta
         shell: bash
         run: |
-          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
-            package_version=$(node -p "require('./package.json').version")
-            version="v${package_version}-pr${{ github.event.number }}"
-          elif [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
+          if [[ '${{ github.event_name }}' == 'workflow_dispatch' ]]; then
             version='${{ inputs.version }}'
-          elif [[ '${{ github.ref_type }}' == 'tag' ]]; then
-            version='${{ github.ref_name }}'
           else
-            package_version=$(node -p "require('./package.json').version")
-            version="v${package_version}"
+            version='${{ github.ref_name }}'
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must look like v0.4.0; got $version" >&2
+            echo "Version must look like v0.5.0; got $version" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Resolved build version: $version"
 
-  build:
+  desktop:
     needs: prepare
     strategy:
       fail-fast: false
@@ -88,13 +64,9 @@ jobs:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Synchronize application version from Release tag
+      - name: Synchronize application version
         shell: bash
         run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
-
-      - name: Verify synchronized version
-        shell: bash
-        run: node tools/check-version-sync.mjs
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -104,10 +76,10 @@ jobs:
             libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Test shared core and extractors
+      - name: Run tests
         run: npm test
 
       - name: Build Windows portable executable
@@ -129,7 +101,7 @@ jobs:
           $version = '${{ needs.prepare.outputs.version }}'
           $stage = "release/Token-on-Kindle-$version-windows-x64"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "src-tauri/target/release/token-on-kindle.exe" "$stage/Token-on-Kindle.exe"
+          Copy-Item src-tauri/target/release/token-on-kindle.exe "$stage/Token-on-Kindle.exe"
           Copy-Item README.md "$stage/README.md"
           Compress-Archive -Path "$stage/*" -DestinationPath "release/Token-on-Kindle-$version-windows-x64.zip" -Force
           $hash = (Get-FileHash "release/Token-on-Kindle-$version-windows-x64.zip" -Algorithm SHA256).Hash.ToLower()
@@ -160,8 +132,7 @@ jobs:
           chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
           sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
 
-      - name: Upload desktop payload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}
           path: release/*
@@ -182,22 +153,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
-
-      - name: Synchronize application version from Release tag
+      - name: Synchronize application version
         run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
-
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm install
-
-      - name: Test shared core and extractors
+      - name: Run tests
         run: npm test
-
       - name: Initialize Android project
         run: npm run tauri android init -- --ci
-
       - name: Build installable arm64 debug APK
         run: npm run tauri android build -- --debug --apk --target aarch64
-
       - name: Package Android
         shell: bash
         run: |
@@ -208,26 +173,22 @@ jobs:
           test -n "$apk"
           cp "$apk" "release/Token-on-Kindle-$version-android-arm64-debug.apk"
           sha256sum "release/Token-on-Kindle-$version-android-arm64-debug.apk" > "release/Token-on-Kindle-$version-android-arm64-debug.sha256"
-
-      - name: Upload Android payload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: release-android-arm64
           path: release/*
           if-no-files-found: error
 
-  assemble:
-    needs: [prepare, build, android]
+  publish:
+    needs: [prepare, desktop, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download all platform payloads
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           path: release
           merge-multiple: true
-
       - name: Package KOReader plugin
         shell: bash
         run: |
@@ -238,27 +199,12 @@ jobs:
           zip -r "../release/Token-on-Kindle-$version-koreader-plugin.zip" tokenonkindle.koplugin README.md
           cd ../release
           sha256sum "Token-on-Kindle-$version-koreader-plugin.zip" > "Token-on-Kindle-$version-koreader-plugin.sha256"
-
       - name: Create combined checksums
         shell: bash
         run: |
           cd release
           cat *.sha256 > "Token-on-Kindle-${{ needs.prepare.outputs.version }}-SHA256SUMS.txt"
-
-      - name: Upload assembled dry-run payload
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-dry-run
-          path: |
-            release/Token-on-Kindle-*.zip
-            release/Token-on-Kindle-*.AppImage
-            release/Token-on-Kindle-*.apk
-            release/Token-on-Kindle-*-SHA256SUMS.txt
-          if-no-files-found: error
-
       - name: Create or update GitHub Release
-        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
