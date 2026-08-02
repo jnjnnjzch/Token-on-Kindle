@@ -1,0 +1,33 @@
+.device-panel {
+  padding: 20px;
+}
+
+.profile-label {
+  display: block;
+  margin: 16px 0 7px;
+  color: #5e5e59;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-select {
+  width: 100%;
+  padding: 11px 38px 11px 12px;
+  border: 1px solid #bdbdb8;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1a1a;
+  font: 600 12px/1.4 Inter, system-ui, "Microsoft YaHei", sans-serif;
+}
+
+.profile-select:focus {
+  outline: 2px solid #333;
+  outline-offset: 2px;
+}
+
+.profile-note {
+  margin: 9px 0 0;
+  color: #777771;
+  font-size: 11px;
+  line-height: 1.55;
+}
