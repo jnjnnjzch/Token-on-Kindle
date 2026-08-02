@@ -4,6 +4,7 @@ import { parseDeepSeekSummaryText } from '../shared/deepseek-summary-parser.mjs'
 
 test('reads the visible DeepSeek summary cards from the current Usage page', () => {
   const result = parseDeepSeekSummaryText(`
+充值余额 余额预警已开启 去设置 ¥72.91
 Overview
 Cost
 ¥47.09
@@ -20,6 +21,7 @@ API requests 399
 Tokens 47,917,935
 `);
 
+  assert.equal(result.balance.value, 72.91);
   assert.equal(result.cost.value, 47.09);
   assert.equal(result.requests.value, 1367);
   assert.equal(result.tokens.value, 178_767_054);
@@ -47,4 +49,10 @@ Tokens
 
   assert.equal(result.requests.value, 1367);
   assert.equal(result.tokens.value, 178_767_054);
+});
+
+test('reads an inline balance card even when alert controls share the same line', () => {
+  const result = parseDeepSeekSummaryText('充值余额 余额预警已开启 去设置 ¥71.38');
+  assert.equal(result.balance.value, 71.38);
+  assert.equal(result.balance.method, 'inline-label');
 });
