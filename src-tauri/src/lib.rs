@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream, UdpSocket},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     sync::{Arc, Condvar, Mutex, RwLock},
     thread,
     time::Duration,
@@ -18,6 +18,11 @@ use tauri::{
 };
 
 mod desktop;
+mod update_helper;
+
+pub fn run_update_helper_from_args() -> bool {
+    update_helper::run_from_args()
+}
 use desktop::{
     copy_browser_url, get_desktop_state, open_browser_url, set_autostart_enabled,
     set_collection_paused, set_tray_source_status, set_tray_update_status,
@@ -432,57 +437,7 @@ Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force
 
     let source_exe = find_update_executable(&extract_dir)
         .ok_or_else(|| "更新包中没有找到 Token-on-Kindle.exe".to_string())?;
-    let replace_script = temp_root.join("replace-and-restart.ps1");
-    fs::write(
-        &replace_script,
-        r#"param(
-  [int]$ProcessId,
-  [string]$SourceExe,
-  [string]$TargetExe,
-  [string]$WorkingDir
-)
-$ErrorActionPreference = 'Stop'
-Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
-$copied = $false
-for ($attempt = 0; $attempt -lt 60; $attempt++) {
-  try {
-    Copy-Item -LiteralPath $SourceExe -Destination $TargetExe -Force
-    $copied = $true
-    break
-  } catch {
-    Start-Sleep -Milliseconds 250
-  }
-}
-if (-not $copied) { throw 'unable to replace running executable' }
-Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Parent $TargetExe)
-Start-Sleep -Milliseconds 800
-Remove-Item -LiteralPath $WorkingDir -Recurse -Force -ErrorAction SilentlyContinue
-"#,
-    )
-    .map_err(|error| format!("无法写入替换脚本：{error}"))?;
-
-    Command::new("powershell.exe")
-        .arg("-NoLogo")
-        .arg("-NoProfile")
-        .arg("-NonInteractive")
-        .arg("-ExecutionPolicy")
-        .arg("Bypass")
-        .arg("-File")
-        .arg(&replace_script)
-        .arg("-ProcessId")
-        .arg(std::process::id().to_string())
-        .arg("-SourceExe")
-        .arg(&source_exe)
-        .arg("-TargetExe")
-        .arg(&current_exe)
-        .arg("-WorkingDir")
-        .arg(&temp_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map_err(|error| format!("无法启动更新替换进程：{error}"))?;
+    update_helper::prepare_and_spawn(&current_exe, &source_exe, &temp_root)?;
 
     let app_for_exit = app.clone();
     thread::spawn(move || {
