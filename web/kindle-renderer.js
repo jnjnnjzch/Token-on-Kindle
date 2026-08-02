@@ -2,8 +2,11 @@ const PALETTE = {
   white: '#ffffff',
   ink: '#000000',
   dark: '#3f3f3f',
+  mid: '#777777',
   light: '#d2d2d2',
-  paper: '#f2f2f2'
+  paper: '#f2f2f2',
+  unlock: '#565656',
+  unlockEdge: '#8d8d8d'
 };
 
 const numericValue = value => {
@@ -26,6 +29,13 @@ export function modelTokenBreakdown(source = {}) {
     cacheHitTokens: numericValue(source.cacheHitTokens),
     outputTokens: numericValue(source.outputTokens)
   };
+}
+
+export function formatRefreshInterval(value) {
+  const minutes = Math.round(numericValue(value) ?? 10);
+  if (minutes < 60) return `每 ${minutes} 分钟自动更新`;
+  if (minutes % 60 === 0) return `每 ${minutes / 60} 小时自动更新`;
+  return `每 ${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟自动更新`;
 }
 
 const formatTokens = value => {
@@ -162,12 +172,12 @@ function drawDeepSeekSummary(ctx, deepseek, dailyMode, cost, tokens) {
 
 function drawModel(ctx, x, title, model, gray = false) {
   const y = 368;
-  drawBox(ctx, x, y, 264, 174, PALETTE.white, PALETTE.ink, 2);
+  drawBox(ctx, x, y, 264, 186, PALETTE.white, PALETTE.ink, 2);
   drawText(ctx, title, x + 14, y + 12, 15, 800);
   drawText(ctx, formatMoney(model.cost), x + 248, y + 12, 18, 800, 'right');
-  drawText(ctx, formatTokens(model.tokens), x + 14, y + 42, 28, 850);
-  drawText(ctx, '总 TOKEN', x + 14, y + 76, 11, 650, 'left', PALETTE.dark);
-  drawLine(ctx, x + 14, y + 94, x + 250, y + 94, 2, PALETTE.dark);
+  drawText(ctx, formatTokens(model.tokens), x + 14, y + 42, 29, 850);
+  drawText(ctx, '总 TOKEN', x + 14, y + 77, 11, 650, 'left', PALETTE.dark);
+  drawLine(ctx, x + 14, y + 96, x + 250, y + 96, 2, PALETTE.dark);
 
   const parts = [
     ['未缓存', model.cacheMissTokens],
@@ -176,13 +186,13 @@ function drawModel(ctx, x, title, model, gray = false) {
   ];
   parts.forEach(([label, value], index) => {
     const center = x + 14 + (index + 0.5) * (236 / 3);
-    drawText(ctx, label, center, y + 100, 10, 650, 'center', PALETTE.dark);
-    drawText(ctx, formatTokens(value), center, y + 116, 14, 800, 'center');
+    drawText(ctx, label, center, y + 103, 10, 650, 'center', PALETTE.dark);
+    drawText(ctx, formatTokens(value), center, y + 121, 14, 800, 'center');
   });
 
-  drawText(ctx, '缓存率', x + 14, y + 139, 11, 650, 'left', PALETTE.dark);
-  drawText(ctx, formatPercent(model.cacheRate), x + 250, y + 139, 11, 750, 'right', PALETTE.dark);
-  drawBar(ctx, x + 14, y + 157, 236, 10, cacheRateToRatio(model.cacheRate), gray ? PALETTE.dark : PALETTE.ink);
+  drawText(ctx, '缓存率', x + 14, y + 148, 11, 650, 'left', PALETTE.dark);
+  drawText(ctx, formatPercent(model.cacheRate), x + 250, y + 148, 11, 750, 'right', PALETTE.dark);
+  drawBar(ctx, x + 14, y + 169, 236, 10, cacheRateToRatio(model.cacheRate), gray ? PALETTE.dark : PALETTE.ink);
 }
 
 function drawRangeFallback(ctx, deepseek) {
@@ -190,23 +200,23 @@ function drawRangeFallback(ctx, deepseek) {
   const tokens = numericValue(deepseek.range?.tokens);
   const average = requests && tokens != null ? tokens / requests : null;
 
-  drawBox(ctx, 28, 368, 264, 174, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, 'API 请求', 42, 386, 15, 800);
-  drawText(ctx, formatInteger(requests), 42, 426, 32, 850);
-  drawText(ctx, '当前筛选范围', 42, 480, 13, 600, 'left', PALETTE.dark);
+  drawBox(ctx, 28, 368, 264, 186, PALETTE.white, PALETTE.ink, 2);
+  drawText(ctx, 'API 请求', 42, 388, 15, 800);
+  drawText(ctx, formatInteger(requests), 42, 430, 34, 850);
+  drawText(ctx, '当前筛选范围', 42, 496, 13, 600, 'left', PALETTE.dark);
 
-  drawBox(ctx, 308, 368, 264, 174, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, '平均 Token / 请求', 322, 386, 15, 800);
-  drawText(ctx, formatTokens(average), 322, 426, 32, 850);
-  drawText(ctx, '总 Token ÷ 请求数', 322, 480, 13, 600, 'left', PALETTE.dark);
+  drawBox(ctx, 308, 368, 264, 186, PALETTE.white, PALETTE.ink, 2);
+  drawText(ctx, '平均 Token / 请求', 322, 388, 15, 800);
+  drawText(ctx, formatTokens(average), 322, 430, 34, 850);
+  drawText(ctx, '总 Token ÷ 请求数', 322, 496, 13, 600, 'left', PALETTE.dark);
 }
 
 function drawCache(ctx, deepseek, flash, pro, dailyMode) {
-  drawBox(ctx, 28, 554, 544, 70, PALETTE.paper, PALETTE.ink, 2);
+  drawBox(ctx, 28, 566, 544, 76, PALETTE.paper, PALETTE.ink, 2);
 
   if (!dailyMode) {
-    drawText(ctx, '今日 Flash / Pro 明细正在同步', 44, 569, 19, 800);
-    drawText(ctx, '范围总览已显示', 556, 572, 13, 600, 'right', PALETTE.dark);
+    drawText(ctx, '今日 Flash / Pro 明细正在同步', 44, 581, 19, 800);
+    drawText(ctx, '范围总览已显示', 556, 585, 13, 600, 'right', PALETTE.dark);
     return;
   }
 
@@ -216,23 +226,21 @@ function drawCache(ctx, deepseek, flash, pro, dailyMode) {
     const miss = (flash.cacheMissTokens || 0) + (pro.cacheMissTokens || 0);
     cacheRate = hit + miss > 0 ? hit / (hit + miss) * 100 : null;
   }
-  drawText(ctx, '总体缓存命中率', 44, 566, 15, 750);
-  drawText(ctx, formatPercent(cacheRate), 556, 562, 25, 850, 'right');
-  drawBar(ctx, 44, 601, 512, 14, cacheRateToRatio(cacheRate));
+  drawText(ctx, '总体缓存命中率', 44, 578, 15, 750);
+  drawText(ctx, formatPercent(cacheRate), 556, 574, 25, 850, 'right');
+  drawBar(ctx, 44, 612, 512, 16, cacheRateToRatio(cacheRate));
 }
 
-function drawUnlockDock(ctx) {
-  const x = 104;
-  const y = 722;
-  const width = 392;
-  const height = 78;
-  const radius = 18;
+function drawUnlockShelf(ctx) {
+  const x = 70;
+  const y = 756;
+  const width = 460;
+  const radius = 13;
 
-  drawLine(ctx, 28, 714, 572, 714, 3, PALETTE.ink);
-  drawLine(ctx, 28, 742, x - 16, 742, 2, PALETTE.dark);
-  drawLine(ctx, x + width + 16, 742, 572, 742, 2, PALETTE.dark);
+  drawLine(ctx, 28, 773, x - 14, 773, 2, PALETTE.unlockEdge);
+  drawLine(ctx, x + width + 14, 773, 572, 773, 2, PALETTE.unlockEdge);
 
-  ctx.fillStyle = PALETTE.ink;
+  ctx.fillStyle = PALETTE.unlock;
   ctx.beginPath();
   ctx.moveTo(x, 800);
   ctx.lineTo(x, y + radius);
@@ -243,16 +251,17 @@ function drawUnlockDock(ctx) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = PALETTE.dark;
-  ctx.fillRect(266, y + 10, 68, 4);
+  ctx.fillStyle = PALETTE.unlockEdge;
+  ctx.fillRect(247, y + 8, 106, 3);
 }
 
 function drawFooter(ctx, state) {
-  drawLine(ctx, 28, 638, 572, 638, 2);
-  drawText(ctx, `Codex ${formatTime(state.codex?.capturedAt)}`, 28, 651, 13, 650, 'left', PALETTE.dark);
-  drawText(ctx, `DeepSeek ${formatTime(state.deepseek?.capturedAt)}`, 572, 651, 13, 650, 'right', PALETTE.dark);
-  drawText(ctx, '每 10 分钟自动更新', 300, 682, 13, 650, 'center', PALETTE.dark);
-  drawUnlockDock(ctx);
+  drawLine(ctx, 28, 655, 572, 655, 2);
+  drawText(ctx, `Codex ${formatTime(state.codex?.capturedAt)}`, 28, 670, 13, 650, 'left', PALETTE.dark);
+  drawText(ctx, `DeepSeek ${formatTime(state.deepseek?.capturedAt)}`, 572, 670, 13, 650, 'right', PALETTE.dark);
+  drawText(ctx, formatRefreshInterval(state.refreshMinutes), 300, 700, 13, 700, 'center', PALETTE.dark);
+  drawText(ctx, '局域网网页与屏保图片已就绪', 300, 725, 12, 600, 'center', PALETTE.mid);
+  drawUnlockShelf(ctx);
 }
 
 export function renderKindleDashboard(ctx, state) {

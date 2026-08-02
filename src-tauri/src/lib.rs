@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream, UdpSocket},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Condvar, Mutex, RwLock},
     thread,
     time::Duration,
 };
@@ -23,7 +23,9 @@ const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";
 const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
 const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
 const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
-const REFRESH_SECONDS: u64 = 10 * 60;
+const DEFAULT_REFRESH_MINUTES: u64 = 10;
+const MIN_REFRESH_MINUTES: u64 = 1;
+const MAX_REFRESH_MINUTES: u64 = 24 * 60;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,9 +35,54 @@ struct MetricsState {
     received_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeSettings {
+    refresh_minutes: u64,
+    image_url: String,
+    browser_url: String,
+}
+
+struct RefreshClock {
+    minutes: Mutex<u64>,
+    changed: Condvar,
+}
+
+impl RefreshClock {
+    fn new(minutes: u64) -> Self {
+        Self {
+            minutes: Mutex::new(minutes),
+            changed: Condvar::new(),
+        }
+    }
+
+    fn get(&self) -> u64 {
+        self.minutes
+            .lock()
+            .map(|minutes| *minutes)
+            .unwrap_or(DEFAULT_REFRESH_MINUTES)
+    }
+
+    fn set(&self, minutes: u64) -> Result<u64, String> {
+        if !(MIN_REFRESH_MINUTES..=MAX_REFRESH_MINUTES).contains(&minutes) {
+            return Err(format!(
+                "刷新间隔必须在 {MIN_REFRESH_MINUTES}–{MAX_REFRESH_MINUTES} 分钟之间"
+            ));
+        }
+        let mut current = self
+            .minutes
+            .lock()
+            .map_err(|_| "刷新计时器锁已损坏")?;
+        *current = minutes;
+        self.changed.notify_all();
+        Ok(minutes)
+    }
+}
+
 struct AppState {
     metrics: Mutex<MetricsState>,
     png: Arc<RwLock<Vec<u8>>>,
+    refresh: Arc<RefreshClock>,
     port: u16,
     #[cfg(any(target_os = "android", target_os = "ios"))]
     mobile_refresh: Mutex<bool>,
@@ -114,9 +161,37 @@ fn local_ip() -> String {
         .unwrap_or_else(|_| "127.0.0.1".into())
 }
 
+fn runtime_settings(state: &AppState) -> RuntimeSettings {
+    let host = local_ip();
+    RuntimeSettings {
+        refresh_minutes: state.refresh.get(),
+        image_url: format!("http://{host}:{}/dashboard.png", state.port),
+        browser_url: format!("http://{host}:{}/", state.port),
+    }
+}
+
+#[tauri::command]
+fn get_runtime_settings(state: State<'_, AppState>) -> RuntimeSettings {
+    runtime_settings(&state)
+}
+
 #[tauri::command]
 fn get_dashboard_url(state: State<'_, AppState>) -> String {
-    format!("http://{}:{}/dashboard.png", local_ip(), state.port)
+    runtime_settings(&state).image_url
+}
+
+#[tauri::command]
+fn get_browser_url(state: State<'_, AppState>) -> String {
+    runtime_settings(&state).browser_url
+}
+
+#[tauri::command]
+fn set_refresh_interval(
+    minutes: u64,
+    state: State<'_, AppState>,
+) -> Result<RuntimeSettings, String> {
+    state.refresh.set(minutes)?;
+    Ok(runtime_settings(&state))
 }
 
 fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str), String> {
@@ -175,7 +250,9 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
     let mut refreshed = 0;
     for label in ["codex-login", "deepseek-login"] {
         if let Some(window) = app.get_webview_window(label) {
-            window.eval("location.reload()").map_err(|error| error.to_string())?;
+            window
+                .eval("location.reload()")
+                .map_err(|error| error.to_string())?;
             refreshed += 1;
         }
     }
@@ -203,10 +280,20 @@ async fn refresh_sources(app: AppHandle) -> Result<(), String> {
     reload_sources(&app)
 }
 
-fn start_refresh_scheduler(app: AppHandle) {
+fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(REFRESH_SECONDS));
-        let _ = reload_sources(&app);
+        let guard = match refresh.minutes.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        let wait = Duration::from_secs((*guard).saturating_mul(60));
+        let result = refresh.changed.wait_timeout(guard, wait);
+        let Ok((_guard, timeout)) = result else {
+            return;
+        };
+        if timeout.timed_out() {
+            let _ = reload_sources(&app);
+        }
     });
 }
 
@@ -322,7 +409,58 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
     }
 }
 
-fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>) {
+fn write_response(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    body: &[u8],
+    cache_control: &str,
+) {
+    let header = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: {cache_control}\r\nPragma: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(body);
+}
+
+fn browser_page(refresh_minutes: u64) -> String {
+    let refresh_seconds = refresh_minutes.saturating_mul(60);
+    let nonce = timestamp();
+    format!(
+        r#"<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="refresh" content="{refresh_seconds}">
+<title>Token on Kindle</title>
+<style>
+html,body{{margin:0;padding:0;background:#e7e7e7;color:#111}}
+body{{font-family:Arial,"Microsoft YaHei",sans-serif}}
+main{{width:100%;margin:0 auto}}
+a{{display:block;color:inherit;text-decoration:none}}
+img{{display:block;width:100%;height:auto;margin:0 auto;border:0;background:#fff}}
+.notice{{padding:18px;text-align:center;font-size:18px;line-height:1.5}}
+</style>
+</head>
+<body>
+<main>
+<a href="/" aria-label="点击立即刷新">
+<img src="/dashboard.png?v={nonce}" alt="Codex 与 DeepSeek 用量看板">
+</a>
+<noscript><p class="notice">页面每 {refresh_minutes} 分钟自动重新载入；点击图片可立即刷新。</p></noscript>
+</main>
+</body>
+</html>"#
+    )
+}
+
+fn handle_client(
+    mut stream: TcpStream,
+    png: Arc<RwLock<Vec<u8>>>,
+    refresh: Arc<RefreshClock>,
+) {
     let mut request = [0u8; 2048];
     let count = stream.read(&mut request).unwrap_or(0);
     let first_line = String::from_utf8_lossy(&request[..count]);
@@ -335,40 +473,60 @@ fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>) {
         .next()
         .unwrap_or("/");
 
-    if path == "/dashboard.png" {
-        let bytes = png.read().map(|value| value.clone()).unwrap_or_default();
-        if bytes.is_empty() {
-            let body = b"dashboard has not been rendered yet";
-            let header = format!(
-                "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                body.len()
-            );
-            let _ = stream.write_all(header.as_bytes());
-            let _ = stream.write_all(body);
-            return;
+    match path {
+        "/dashboard.png" => {
+            let bytes = png.read().map(|value| value.clone()).unwrap_or_default();
+            if bytes.is_empty() {
+                write_response(
+                    &mut stream,
+                    "503 Service Unavailable",
+                    "text/plain; charset=utf-8",
+                    b"dashboard has not been rendered yet",
+                    "no-store",
+                );
+            } else {
+                write_response(
+                    &mut stream,
+                    "200 OK",
+                    "image/png",
+                    &bytes,
+                    "no-store, no-cache, must-revalidate, max-age=0",
+                );
+            }
         }
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-            bytes.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(&bytes);
-    } else if path == "/healthz" {
-        let body = b"{\"ok\":true}";
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(body);
-    } else {
-        let body = b"Token on Kindle";
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(body);
+        "/" | "/index.html" => {
+            let body = browser_page(refresh.get());
+            write_response(
+                &mut stream,
+                "200 OK",
+                "text/html; charset=utf-8",
+                body.as_bytes(),
+                "no-store, no-cache, must-revalidate, max-age=0",
+            );
+        }
+        "/healthz" => {
+            let ready = png.read().map(|value| !value.is_empty()).unwrap_or(false);
+            let body = serde_json::json!({
+                "ok": true,
+                "dashboardReady": ready,
+                "refreshMinutes": refresh.get()
+            })
+            .to_string();
+            write_response(
+                &mut stream,
+                "200 OK",
+                "application/json; charset=utf-8",
+                body.as_bytes(),
+                "no-store",
+            );
+        }
+        _ => write_response(
+            &mut stream,
+            "404 Not Found",
+            "text/plain; charset=utf-8",
+            b"not found",
+            "no-store",
+        ),
     }
 }
 
@@ -381,11 +539,16 @@ fn bind_http_server() -> Result<(TcpListener, u16), String> {
     Err("8765–8785 端口均被占用".into())
 }
 
-fn start_http_server(listener: TcpListener, png: Arc<RwLock<Vec<u8>>>) {
+fn start_http_server(
+    listener: TcpListener,
+    png: Arc<RwLock<Vec<u8>>>,
+    refresh: Arc<RefreshClock>,
+) {
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let png = Arc::clone(&png);
-            thread::spawn(move || handle_client(stream, png));
+            let refresh = Arc::clone(&refresh);
+            thread::spawn(move || handle_client(stream, png, refresh));
         }
     });
 }
@@ -455,12 +618,14 @@ fn build_tray(_app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let (listener, port) = bind_http_server().expect("failed to bind local HTTP server");
     let png = Arc::new(RwLock::new(Vec::new()));
-    start_http_server(listener, Arc::clone(&png));
+    let refresh = Arc::new(RefreshClock::new(DEFAULT_REFRESH_MINUTES));
+    start_http_server(listener, Arc::clone(&png), Arc::clone(&refresh));
 
     tauri::Builder::default()
         .manage(AppState {
             metrics: Mutex::new(MetricsState::default()),
             png,
+            refresh: Arc::clone(&refresh),
             port,
             #[cfg(any(target_os = "android", target_os = "ios"))]
             mobile_refresh: Mutex::new(false),
@@ -468,11 +633,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_dashboard_png,
             get_status,
+            get_runtime_settings,
             get_dashboard_url,
+            get_browser_url,
+            set_refresh_interval,
             open_source,
             refresh_sources
         ])
-        .setup(|app| {
+        .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Token on Kindle")
                 .inner_size(1080.0, 760.0)
@@ -487,7 +655,7 @@ pub fn run() {
                 create_source_window(app, "deepseek")?;
             }
 
-            start_refresh_scheduler(app.handle().clone());
+            start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));
             build_tray(app)?;
             Ok(())
         })
