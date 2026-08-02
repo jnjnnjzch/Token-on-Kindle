@@ -51,6 +51,7 @@ export function selectCodexQuotas(codex = {}) {
 
 export function deepSeekMonthlyMetrics(deepseek = {}) {
   return {
+    cumulativeCost: numericValue(deepseek?.account?.cumulativeCost),
     monthlyCost: numericValue(deepseek?.account?.monthlyCost),
     monthlyTokens: numericValue(deepseek?.account?.monthlyTokens),
     monthlyRequests: numericValue(deepseek?.account?.monthlyRequests)
@@ -251,15 +252,16 @@ function drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens) {
   drawLine(ctx, 28, 334, 572, 334, 2, PALETTE.dark);
   const monthly = deepSeekMonthlyMetrics(deepseek);
   const bottomMetrics = [
+    ['累计费用', formatMoney(monthly.cumulativeCost)],
     ['本月费用', formatMoney(monthly.monthlyCost)],
     ['本月 Token', formatTokens(monthly.monthlyTokens)]
   ];
   bottomMetrics.forEach(([label, value], index) => {
-    const left = 28 + index * 272;
-    const center = left + 136;
+    const left = 28 + index * (544 / 3);
+    const center = left + 544 / 6;
     drawText(ctx, label, center, 342, 12, 650, 'center', PALETTE.dark);
-    drawText(ctx, value, center, 359, 20, 800, 'center');
-    if (index === 0) drawLine(ctx, 300, 342, 300, 376, 2, PALETTE.dark);
+    drawText(ctx, value, center, 359, 18, 800, 'center');
+    if (index < 2) drawLine(ctx, left + 544 / 3, 342, left + 544 / 3, 376, 2, PALETTE.dark);
   });
 }
 

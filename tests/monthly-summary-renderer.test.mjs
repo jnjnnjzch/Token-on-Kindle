@@ -4,12 +4,15 @@ import fs from 'node:fs';
 
 const renderer = fs.readFileSync(new URL('../web/kindle-renderer.js', import.meta.url), 'utf8');
 
-test('Kindle summary displays monthly cost and monthly tokens', () => {
+test('Kindle summary displays cumulative and monthly DeepSeek totals in three columns', () => {
   assert.match(renderer, /export function deepSeekMonthlyMetrics/);
+  assert.match(renderer, /deepseek\?\.account\?\.cumulativeCost/);
   assert.match(renderer, /deepseek\?\.account\?\.monthlyCost/);
   assert.match(renderer, /deepseek\?\.account\?\.monthlyTokens/);
+  assert.match(renderer, /\['累计费用', formatMoney\(monthly\.cumulativeCost\)\]/);
   assert.match(renderer, /\['本月费用', formatMoney\(monthly\.monthlyCost\)\]/);
   assert.match(renderer, /\['本月 Token', formatTokens\(monthly\.monthlyTokens\)\]/);
+  assert.match(renderer, /index \* \(544 \/ 3\)/);
 });
 
 test('selected-range values are no longer used by the visible DeepSeek summary', () => {
