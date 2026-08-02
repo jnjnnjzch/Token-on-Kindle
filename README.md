@@ -7,8 +7,8 @@
 - Windows、macOS 与 Linux 使用正式应用图标作为任务栏、Dock、菜单栏或系统托盘图标。
 - 托盘实时显示 Codex、DeepSeek 与应用更新状态。
 - 托盘支持显示或隐藏看板、暂停或恢复采集、打开或复制 Kindle 地址、检查更新和退出。
-- 支持桌面端开机启动；macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。
-- 主界面新增“任务栏与后台”区域，与托盘中的暂停状态和开机启动设置保持同步。
+- 支持桌面端登录时自动启动；macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。
+- 主界面新增“任务栏与后台”区域，与托盘中的暂停状态和自动启动设置保持同步。
 
 ## v0.6.0
 
@@ -71,7 +71,7 @@ Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后
 - Windows x64：主要支持平台，提供便携 EXE/ZIP，并支持自动安装更新和重启。
 - macOS arm64：提供 `.app` ZIP，使用系统 WKWebView；更新检查后手动替换应用。
 - Linux x64：发布 AppImage；更新检查后手动替换文件。
-- Android arm64：提供 debug APK；不提供桌面托盘或开机启动控制。
+- Android arm64：提供 debug APK；不提供桌面托盘或自动启动控制。
 - KOReader：提供插件 ZIP，用于同步图片并设置休眠屏幕，不提供桌面托盘。
 
 正式版本发布在 GitHub Releases。PR 运行测试和 Windows 便携 EXE 验证；主线新版本由同一份 Pipeline 构建所有平台并创建 Release。
