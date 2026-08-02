@@ -38,10 +38,17 @@
 
       <aside class="side-column">
         <section class="panel connection-panel">
-          <span class="eyebrow">ONLINE SCREENSAVER</span><h2>Kindle 图片地址</h2>
-          <div class="url-box"><code id="url">正在读取局域网地址…</code></div>
-          <button id="copy" class="copy-button">复制地址</button>
-          <p class="help-text">将地址填入 Online Screensaver 的 <code>IMAGE_URI</code>。电脑与 Kindle 需要连接同一局域网。</p>
+          <span class="eyebrow">KINDLE BROWSER</span><h2>浏览器访问地址</h2>
+          <p class="url-label">未越狱 Kindle 直接打开</p>
+          <div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div>
+          <button id="copy-browser" class="copy-button">复制浏览器地址</button>
+          <p class="help-text">电脑与 Kindle 连接同一局域网后，在 Kindle 实验性浏览器中打开此地址。页面会按下方设置的间隔自动刷新。</p>
+
+          <div class="secondary-url">
+            <p class="url-label">屏保插件图片地址</p>
+            <div class="url-box compact-url"><code id="url">正在读取图片地址…</code></div>
+            <button id="copy" class="copy-button secondary-button">复制图片地址</button>
+          </div>
         </section>
 
         <section class="panel device-panel">
@@ -49,14 +56,20 @@
           <label class="profile-label" for="kindle-profile">原生输出分辨率</label>
           <select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select>
           <p id="profile-description" class="help-text">Kindle 4/5/7/8/10 等经典 6 英寸机型</p>
-          <p class="profile-note">切换后立即重新生成图片；访问地址保持不变。</p>
+          <p class="profile-note">切换后立即重新生成图片；两个访问地址保持不变。</p>
         </section>
 
         <section class="panel schedule-panel">
           <span class="eyebrow">BACKGROUND SYNC</span><h2>自动更新</h2>
-          <div class="schedule-row"><strong>10 分钟</strong><span>刷新一次 Codex 与 DeepSeek</span></div>
+          <label class="interval-label" for="refresh-minutes">刷新间隔（分钟）</label>
+          <div class="interval-control">
+            <input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" inputmode="numeric" value="10">
+            <button id="save-refresh" class="save-button">保存</button>
+          </div>
+          <p id="refresh-value" class="interval-status">当前每 10 分钟刷新一次</p>
           <div class="schedule-row"><strong>常驻</strong><span>关闭窗口后继续在托盘运行</span></div>
-          <div class="schedule-row"><strong>安全区</strong><span>底部黑带用于显示白色“滑动以解锁”</span></div>
+          <div class="schedule-row"><strong>网页</strong><span>Kindle 浏览器页面使用相同刷新间隔</span></div>
+          <div class="schedule-row"><strong>安全区</strong><span>底部窄幅中灰承托区保证白色解锁文字清晰</span></div>
         </section>
 
         <section class="panel app-update-panel">
