@@ -182,17 +182,48 @@
     return [...root.querySelectorAll('span,div,p')].find(element => clean(element.textContent).toLowerCase() === value.toLowerCase());
   }
 
+  function exactMetricLabels(labels, root = document) {
+    const normalized = labels.map(label => label.toLowerCase());
+    return [...root.querySelectorAll('span,div,p,label,h1,h2,h3,h4')]
+      .filter(element => normalized.includes(clean(element.textContent).toLowerCase()));
+  }
+
+  function metricFromLabelAncestor(labels, parser) {
+    for (const labelElement of exactMetricLabels(labels)) {
+      let node = labelElement.parentElement;
+      for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        const raw = clean(node.innerText || node.textContent || '');
+        if (!raw || raw.length > 600) continue;
+        const value = parser(raw);
+        if (value != null) return { value, raw, method: 'label-ancestor' };
+      }
+    }
+    return null;
+  }
+
   function cardMetric(labels, parser = numeric) {
+    const normalized = labels.map(label => label.toLowerCase());
+    const exactOnly = normalized.some(label => ['cost', '费用', '消耗'].includes(label));
     const cards = [...document.querySelectorAll('[data-usage-layout-card="true"], .usage-layout-card')];
     for (const card of cards) {
       const text = clean(card.innerText || card.textContent || '');
-      if (!labels.some(label => text.toLowerCase().includes(label.toLowerCase()))) continue;
+      const exactLabel = exactMetricLabels(labels, card).length > 0;
+      const containsLabel = normalized.some(label => text.toLowerCase().includes(label));
+      if (!(exactLabel || (!exactOnly && containsLabel))) continue;
+
       const valueElement = card.querySelector('[data-usage-layout-font="value"]');
-      const raw = clean(valueElement?.textContent || text);
-      const value = parser(raw);
-      if (value != null) return { value, raw };
+      const candidates = [
+        { raw: clean(valueElement?.innerText || valueElement?.textContent || ''), method: 'value-node' },
+        { raw: clean(card.innerText || ''), method: 'card-inner-text' },
+        { raw: clean(card.textContent || ''), method: 'card-text-content' }
+      ];
+      for (const candidate of candidates) {
+        if (!candidate.raw) continue;
+        const value = parser(candidate.raw);
+        if (value != null) return { value, raw: candidate.raw, method: candidate.method };
+      }
     }
-    return null;
+    return metricFromLabelAncestor(labels, parser);
   }
 
   function chartContext(chart) {
