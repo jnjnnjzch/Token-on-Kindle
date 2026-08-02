@@ -41,6 +41,7 @@ fn ensure_icons() {
 fn generate_extractor() {
     let manifest = manifest_dir();
     let parser_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
+    let network_path = manifest.join("../web/deepseek-network-capture.js");
     let base_path = manifest.join("../web/extractor-base.js");
     let target_path = manifest.join("../web/extractor.js");
 
@@ -49,15 +50,17 @@ fn generate_extractor() {
         "export function parseDeepSeekResponses",
         "function parseDeepSeekResponses",
     );
+    let network = fs::read_to_string(&network_path).expect("read DeepSeek network capture");
     let base = fs::read_to_string(&base_path).expect("read extractor base");
     let generated = format!(
-        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n{base}\n"
+        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n{network}\n\n{base}\n"
     );
     fs::write(target_path, generated).expect("write generated extractor");
 }
 
 fn main() {
     println!("cargo:rerun-if-changed=../web/extractor-base.js");
+    println!("cargo:rerun-if-changed=../web/deepseek-network-capture.js");
     println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
     ensure_icons();
     generate_extractor();
