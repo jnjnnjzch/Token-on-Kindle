@@ -49,6 +49,14 @@ export function selectCodexQuotas(codex = {}) {
   return { weekly, hourly };
 }
 
+export function deepSeekMonthlyMetrics(deepseek = {}) {
+  return {
+    monthlyCost: numericValue(deepseek?.account?.monthlyCost),
+    monthlyTokens: numericValue(deepseek?.account?.monthlyTokens),
+    monthlyRequests: numericValue(deepseek?.account?.monthlyRequests)
+  };
+}
+
 export function deepSeekRangeMetrics(deepseek = {}) {
   return {
     rangeCost: numericValue(deepseek?.range?.cost),
@@ -241,10 +249,10 @@ function drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens) {
   });
 
   drawLine(ctx, 28, 334, 572, 334, 2, PALETTE.dark);
-  const range = deepSeekRangeMetrics(deepseek);
+  const monthly = deepSeekMonthlyMetrics(deepseek);
   const bottomMetrics = [
-    ['筛选范围费用', formatMoney(range.rangeCost)],
-    ['筛选范围 Token', formatTokens(range.rangeTokens)]
+    ['本月费用', formatMoney(monthly.monthlyCost)],
+    ['本月 Token', formatTokens(monthly.monthlyTokens)]
   ];
   bottomMetrics.forEach(([label, value], index) => {
     const left = 28 + index * 272;
@@ -280,20 +288,21 @@ function drawModel(ctx, x, title, model, gray = false) {
   drawBar(ctx, x + 14, y + 160, 236, 10, cacheRateToRatio(model.cacheRate), gray ? PALETTE.dark : PALETTE.ink);
 }
 
-function drawRangeFallback(ctx, deepseek) {
-  const requests = numericValue(deepseek.range?.requests);
-  const tokens = numericValue(deepseek.range?.tokens);
+function drawMonthlyFallback(ctx, deepseek) {
+  const monthly = deepSeekMonthlyMetrics(deepseek);
+  const requests = monthly.monthlyRequests;
+  const tokens = monthly.monthlyTokens;
   const average = requests && tokens != null ? tokens / requests : null;
 
   drawBox(ctx, 28, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, 'API 请求', 42, 416, 15, 800);
+  drawText(ctx, '本月 API 请求', 42, 416, 15, 800);
   drawText(ctx, formatInteger(requests), 42, 458, 34, 850);
-  drawText(ctx, '当前筛选范围', 42, 520, 13, 600, 'left', PALETTE.dark);
+  drawText(ctx, '内部用量接口汇总', 42, 520, 13, 600, 'left', PALETTE.dark);
 
   drawBox(ctx, 308, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
   drawText(ctx, '平均 Token / 请求', 322, 416, 15, 800);
   drawText(ctx, formatTokens(average), 322, 458, 34, 850);
-  drawText(ctx, '总 Token ÷ 请求数', 322, 520, 13, 600, 'left', PALETTE.dark);
+  drawText(ctx, '本月 Token ÷ 请求数', 322, 520, 13, 600, 'left', PALETTE.dark);
 }
 
 function drawCache(ctx, deepseek, flash, pro, dailyMode) {
@@ -301,7 +310,7 @@ function drawCache(ctx, deepseek, flash, pro, dailyMode) {
 
   if (!dailyMode) {
     drawText(ctx, '今日 Flash / Pro 明细正在同步', 44, 601, 19, 800);
-    drawText(ctx, '范围总览已显示', 556, 605, 13, 600, 'right', PALETTE.dark);
+    drawText(ctx, '本月总览已显示', 556, 605, 13, 600, 'right', PALETTE.dark);
     return;
   }
 
@@ -348,7 +357,7 @@ export function renderKindleDashboard(ctx, state) {
     drawModel(ctx, 28, 'V4 FLASH', flash, false);
     drawModel(ctx, 308, 'V4 PRO', pro, true);
   } else {
-    drawRangeFallback(ctx, deepseek);
+    drawMonthlyFallback(ctx, deepseek);
   }
   drawCache(ctx, deepseek, flash, pro, dailyMode);
   drawFooter(ctx, state);
