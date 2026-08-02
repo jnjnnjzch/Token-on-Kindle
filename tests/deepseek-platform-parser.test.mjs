@@ -84,6 +84,10 @@ const costBody = {
   }
 };
 
+const closeTo = (actual, expected, epsilon = 1e-12) => {
+  assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} is not within ${epsilon} of ${expected}`);
+};
+
 test('parses the actual DeepSeek amount/cost response schema by model and day', () => {
   const result = parseDeepSeekPlatformPayloads({
     summaryBody,
@@ -92,19 +96,19 @@ test('parses the actual DeepSeek amount/cost response schema by model and day', 
     now: new Date('2026-08-02T12:00:00+08:00')
   });
 
-  assert.equal(result.balance.value, 73.91);
+  closeTo(result.balance.value, 73.91);
   assert.equal(result.date, '2026-08-02');
   assert.equal(result.models.flash.tokens, 12_500_000);
   assert.equal(result.models.flash.requests, 120);
-  assert.equal(result.models.flash.cost, 0.448);
-  assert.equal(result.models.flash.cacheRate, 10000000 / 12000000 * 100);
+  closeTo(result.models.flash.cost, 0.448);
+  closeTo(result.models.flash.cacheRate, 10000000 / 12000000 * 100);
   assert.equal(result.models.pro.tokens, 4_250_000);
-  assert.equal(result.models.pro.cost, 2.755);
+  closeTo(result.models.pro.cost, 2.755);
   assert.equal(result.todayTokens, 16_750_000);
   assert.equal(result.todayRequests, 160);
-  assert.equal(result.todayCost, 3.203);
-  assert.equal(result.cacheRate, 13_000_000 / 16_000_000 * 100);
-  assert.equal(result.account.monthlyCost, 47.09);
+  closeTo(result.todayCost, 3.203);
+  closeTo(result.cacheRate, 13_000_000 / 16_000_000 * 100);
+  closeTo(result.account.monthlyCost, 47.09);
   assert.equal(result.account.monthlyTokens, 178_767_054);
 });
 
