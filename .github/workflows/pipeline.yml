@@ -1,8 +1,8 @@
 name: Build and release
 
 on:
-  push:
-    branches: ['feat/v0.6.0-maintenance']
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -28,4 +28,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'v0.6.0: automatic updater, concise diagnostics, repository cleanup, and UI refresh'
-          git push origin HEAD:feat/v0.6.0-maintenance
+          git push origin HEAD:${GITHUB_HEAD_REF:-feat/v0.6.0-maintenance}
