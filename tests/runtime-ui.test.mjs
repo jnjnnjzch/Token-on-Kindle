@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   KINDLE_LAYOUT,
-  deepSeekMonthlyMetrics,
+  deepSeekRangeMetrics,
   selectCodexQuotas
 } from '../web/kindle-renderer.js';
 
@@ -22,15 +22,15 @@ test('Codex falls back to a single available quota without inventing a second co
   assert.deepEqual(selectCodexQuotas({ quotas: [weekly] }), { weekly, hourly: null });
 });
 
-test('DeepSeek monthly values come from verified account totals', () => {
+test('DeepSeek summary follows the currently selected page range', () => {
   assert.deepEqual(
-    deepSeekMonthlyMetrics({ account: { monthlyCost: 18.42, monthlyTokens: 923_000_000 } }),
-    { monthlyCost: 18.42, monthlyTokens: 923_000_000 }
+    deepSeekRangeMetrics({ range: { cost: 18.42, tokens: 923_000_000 } }),
+    { rangeCost: 18.42, rangeTokens: 923_000_000 }
   );
-  assert.deepEqual(deepSeekMonthlyMetrics({ range: { cost: 9, tokens: 10 } }), {
-    monthlyCost: null,
-    monthlyTokens: null
-  });
+  assert.deepEqual(
+    deepSeekRangeMetrics({ account: { monthlyCost: 9, monthlyTokens: 10 } }),
+    { rangeCost: null, rangeTokens: null }
+  );
 });
 
 test('unlock background spans the full image and covers the complete firmware text area', () => {
