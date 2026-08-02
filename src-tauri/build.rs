@@ -38,25 +38,28 @@ fn ensure_icons() {
     }
 }
 
-fn generate_deepseek_browser_parser() {
+fn generate_extractor() {
     let manifest = manifest_dir();
-    let source_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
-    let target_path = manifest.join("../web/deepseek-response-parser.generated.js");
-    let source = fs::read_to_string(&source_path).expect("read DeepSeek parser module");
-    let transformed = source.replace(
+    let parser_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
+    let base_path = manifest.join("../web/extractor-base.js");
+    let target_path = manifest.join("../web/extractor.js");
+
+    let parser = fs::read_to_string(&parser_path).expect("read DeepSeek parser module");
+    let parser = parser.replace(
         "export function parseDeepSeekResponses",
         "function parseDeepSeekResponses",
     );
-    let browser_script = format!(
-        "(() => {{\n{transformed}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n"
+    let base = fs::read_to_string(&base_path).expect("read extractor base");
+    let generated = format!(
+        "(() => {{\n{parser}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n\n{base}\n"
     );
-    fs::write(target_path, browser_script).expect("write generated DeepSeek browser parser");
+    fs::write(target_path, generated).expect("write generated extractor");
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=../web/extractor.js");
+    println!("cargo:rerun-if-changed=../web/extractor-base.js");
     println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
     ensure_icons();
-    generate_deepseek_browser_parser();
+    generate_extractor();
     tauri_build::build()
 }
