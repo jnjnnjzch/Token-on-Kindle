@@ -1,12 +1,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream, UdpSocket},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::{Arc, Condvar, Mutex, RwLock},
     thread,
     time::Duration,
 };
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
@@ -41,6 +47,22 @@ struct RuntimeSettings {
     refresh_minutes: u64,
     image_url: String,
     browser_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateRequest {
+    version: String,
+    download_url: String,
+    checksum_url: String,
+    asset_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInstallResult {
+    version: String,
+    restarting: bool,
 }
 
 struct RefreshClock {
@@ -279,6 +301,211 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
 async fn refresh_sources(app: AppHandle) -> Result<(), String> {
     reload_sources(&app)
 }
+
+fn validate_update_request(request: &UpdateRequest) -> Result<(), String> {
+    const RELEASE_PREFIX: &str = "https://github.com/jnjnnjzch/Token-on-Kindle/releases/download/";
+    if !request.download_url.starts_with(RELEASE_PREFIX)
+        || !request.checksum_url.starts_with(RELEASE_PREFIX)
+    {
+        return Err("更新地址不是本项目的 GitHub Release".into());
+    }
+    if !request.asset_name.starts_with("Token-on-Kindle-")
+        || !request.asset_name.ends_with("-windows-x64.zip")
+        || request.asset_name.contains('/')
+        || request.asset_name.contains('\\')
+    {
+        return Err("Windows 更新包名称不合法".into());
+    }
+    if !request.checksum_url.ends_with("-SHA256SUMS.txt") {
+        return Err("Release 缺少统一 SHA-256 校验文件".into());
+    }
+    let version = request.version.strip_prefix('v').unwrap_or(&request.version);
+    if version.split('.').count() < 3
+        || !version.chars().all(|character| {
+            character.is_ascii_alphanumeric() || ".-_".contains(character)
+        })
+    {
+        return Err("版本号格式不合法".into());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn find_update_executable(root: &Path) -> Option<PathBuf> {
+    for entry in fs::read_dir(root).ok()? {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_update_executable(&path) {
+                return Some(found);
+            }
+        } else if path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("Token-on-Kindle.exe"))
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+async fn install_update(
+    app: AppHandle,
+    request: UpdateRequest,
+) -> Result<UpdateInstallResult, String> {
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    validate_update_request(&request)?;
+
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("无法定位当前程序：{error}"))?;
+    let temp_root = std::env::temp_dir().join(format!(
+        "token-on-kindle-update-{}-{}",
+        request.version.trim_start_matches('v'),
+        timestamp()
+    ));
+    let extract_dir = temp_root.join("payload");
+    let zip_path = temp_root.join(&request.asset_name);
+    let checksum_path = temp_root.join("SHA256SUMS.txt");
+    fs::create_dir_all(&extract_dir)
+        .map_err(|error| format!("无法创建更新目录：{error}"))?;
+
+    let download_script = temp_root.join("download-and-verify.ps1");
+    fs::write(
+        &download_script,
+        r#"param(
+  [string]$DownloadUrl,
+  [string]$ChecksumUrl,
+  [string]$AssetName,
+  [string]$ZipPath,
+  [string]$ChecksumPath,
+  [string]$ExtractDir
+)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -UseBasicParsing -Uri $DownloadUrl -OutFile $ZipPath
+Invoke-WebRequest -UseBasicParsing -Uri $ChecksumUrl -OutFile $ChecksumPath
+$line = Get-Content -LiteralPath $ChecksumPath | Where-Object { $_ -match ([regex]::Escape($AssetName) + '$') } | Select-Object -First 1
+if (-not $line) { throw "checksum entry not found for $AssetName" }
+$expected = ($line -split '\s+')[0].ToLowerInvariant()
+$actual = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($expected -ne $actual) { throw "SHA-256 mismatch: expected $expected, got $actual" }
+Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force
+"#,
+    )
+    .map_err(|error| format!("无法写入下载脚本：{error}"))?;
+
+    let output = Command::new("powershell.exe")
+        .arg("-NoLogo")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-File")
+        .arg(&download_script)
+        .arg("-DownloadUrl")
+        .arg(&request.download_url)
+        .arg("-ChecksumUrl")
+        .arg(&request.checksum_url)
+        .arg("-AssetName")
+        .arg(&request.asset_name)
+        .arg("-ZipPath")
+        .arg(&zip_path)
+        .arg("-ChecksumPath")
+        .arg(&checksum_path)
+        .arg("-ExtractDir")
+        .arg(&extract_dir)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|error| format!("无法启动 PowerShell 下载器：{error}"))?;
+
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if detail.is_empty() {
+            "更新包下载或校验失败".into()
+        } else {
+            format!("更新包下载或校验失败：{detail}")
+        });
+    }
+
+    let source_exe = find_update_executable(&extract_dir)
+        .ok_or_else(|| "更新包中没有找到 Token-on-Kindle.exe".to_string())?;
+    let replace_script = temp_root.join("replace-and-restart.ps1");
+    fs::write(
+        &replace_script,
+        r#"param(
+  [int]$ProcessId,
+  [string]$SourceExe,
+  [string]$TargetExe,
+  [string]$WorkingDir
+)
+$ErrorActionPreference = 'Stop'
+Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
+$copied = $false
+for ($attempt = 0; $attempt -lt 60; $attempt++) {
+  try {
+    Copy-Item -LiteralPath $SourceExe -Destination $TargetExe -Force
+    $copied = $true
+    break
+  } catch {
+    Start-Sleep -Milliseconds 250
+  }
+}
+if (-not $copied) { throw 'unable to replace running executable' }
+Start-Process -FilePath $TargetExe -WorkingDirectory (Split-Path -Parent $TargetExe)
+Start-Sleep -Milliseconds 800
+Remove-Item -LiteralPath $WorkingDir -Recurse -Force -ErrorAction SilentlyContinue
+"#,
+    )
+    .map_err(|error| format!("无法写入替换脚本：{error}"))?;
+
+    Command::new("powershell.exe")
+        .arg("-NoLogo")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-File")
+        .arg(&replace_script)
+        .arg("-ProcessId")
+        .arg(std::process::id().to_string())
+        .arg("-SourceExe")
+        .arg(&source_exe)
+        .arg("-TargetExe")
+        .arg(&current_exe)
+        .arg("-WorkingDir")
+        .arg(&temp_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|error| format!("无法启动更新替换进程：{error}"))?;
+
+    let app_for_exit = app.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(900));
+        app_for_exit.exit(0);
+    });
+
+    Ok(UpdateInstallResult {
+        version: request.version,
+        restarting: true,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+async fn install_update(
+    _app: AppHandle,
+    _request: UpdateRequest,
+) -> Result<UpdateInstallResult, String> {
+    Err("当前自动安装仅支持 Windows 便携版；请从 Release 下载对应平台版本".into())
+}
+
 
 fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
     thread::spawn(move || loop {
@@ -638,13 +865,14 @@ pub fn run() {
             get_browser_url,
             set_refresh_interval,
             open_source,
-            refresh_sources
+            refresh_sources,
+            install_update
         ])
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Token on Kindle")
-                .inner_size(1080.0, 760.0)
-                .min_inner_size(760.0, 580.0)
+                .inner_size(1180.0, 820.0)
+                .min_inner_size(820.0, 620.0)
                 .initialization_script(EXTRACTOR_SCRIPT)
                 .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
