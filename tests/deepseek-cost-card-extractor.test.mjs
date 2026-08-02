@@ -15,3 +15,11 @@ test('Cost uses an exact label so Total cost cannot be selected as the range cos
   assert.match(extractor, /exactMetricLabels\(labels, card\)/);
   assert.match(extractor, /metricFromLabelAncestor\(labels, parser\)/);
 });
+
+test('Chinese selected-range labels are supported without accepting 今日消耗', () => {
+  const aliases = extractor.match(/const exactOnly = normalized\.some\(label => \[(.*?)\]\.includes\(label\)\)/)?.[1] || '';
+  assert.match(aliases, /'费用'/);
+  assert.match(aliases, /'消耗'/);
+  assert.doesNotMatch(aliases, /今日消耗|总消耗|累计消耗/);
+  assert.match(extractor, /cardMetric\(\['cost', '费用', '消耗'\], money\)/);
+});
