@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="v$(node -p \"require('./package.json').version\")"
+          version="v$(grep -m1 '"'"'"version"'"'"' package.json | sed -E 's/.*"'"'"version"'"'": "'"'"([^"'"'"']+)"'"'".*/\1/')"
           mkdir -p release
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
           test -n "$apk"
