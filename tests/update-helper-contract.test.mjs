@@ -19,6 +19,12 @@ test('Windows updater uses an independent executable helper instead of a silent 
   assert.match(helper, /CREATE_BREAKAWAY_FROM_JOB/);
 });
 
+test('cross-version updates run the helper from the downloaded new binary', () => {
+  assert.match(helper, /fs::copy\(source_exe, &helper\)/);
+  assert.doesNotMatch(helper, /fs::copy\(current_exe, &helper\)/);
+  assert.match(helper, /Older installed versions do/);
+});
+
 test('updater preflights the target directory and performs recoverable replacement', () => {
   assert.match(helper, /无法在程序目录预写入新版本/);
   assert.match(helper, /fs::rename\(target, backup\)/);
