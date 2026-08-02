@@ -8,6 +8,7 @@ on:
       - 'src-tauri/**'
       - 'web/**'
       - 'shared/**'
+      - 'tests/**'
       - 'tools/**'
       - 'koreader/**'
       - 'package.json'
@@ -23,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version, for example v0.3.1'
+        description: 'Release version, for example v0.4.0'
         required: true
         type: string
       prerelease:
@@ -61,7 +62,7 @@ jobs:
             version="v${package_version}"
           fi
           if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must look like v0.3.1; got $version" >&2
+            echo "Version must look like v0.4.0; got $version" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -159,15 +160,64 @@ jobs:
           chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
           sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
 
-      - name: Upload platform payload
+      - name: Upload desktop payload
         uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}
           path: release/*
           if-no-files-found: error
 
+  android:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Synchronize application version from Release tag
+        run: node tools/sync-version.mjs '${{ needs.prepare.outputs.version }}'
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Test shared core and extractors
+        run: npm test
+
+      - name: Initialize Android project
+        run: npm run tauri android init -- --ci
+
+      - name: Build installable arm64 debug APK
+        run: npm run tauri android build -- --debug --apk --target aarch64
+
+      - name: Package Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          mkdir -p release
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
+          test -n "$apk"
+          cp "$apk" "release/Token-on-Kindle-$version-android-arm64-debug.apk"
+          sha256sum "release/Token-on-Kindle-$version-android-arm64-debug.apk" > "release/Token-on-Kindle-$version-android-arm64-debug.sha256"
+
+      - name: Upload Android payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-arm64
+          path: release/*
+          if-no-files-found: error
+
   assemble:
-    needs: [prepare, build]
+    needs: [prepare, build, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -203,6 +253,7 @@ jobs:
           path: |
             release/Token-on-Kindle-*.zip
             release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.apk
             release/Token-on-Kindle-*-SHA256SUMS.txt
           if-no-files-found: error
 
@@ -218,4 +269,5 @@ jobs:
           files: |
             release/Token-on-Kindle-*.zip
             release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.apk
             release/Token-on-Kindle-*-SHA256SUMS.txt
