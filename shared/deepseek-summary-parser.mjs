@@ -20,18 +20,33 @@ function valueAfterExactLabel(lines, labels, parser) {
       const candidate = lines[index + offset];
       if (!candidate) continue;
       const parsed = parser(candidate);
-      if (parsed != null) return { value: parsed, raw: candidate, label: lines[index] };
+      if (parsed != null) return { value: parsed, raw: candidate, label: lines[index], method: 'exact-label' };
       if (/^(cost|api requests|tokens|balance|费用|消耗|请求|余额)$/i.test(candidate)) break;
     }
   }
   return null;
 }
 
+function inlineMoney(text, labels) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`${escaped}[^¥￥\\d]{0,100}(?:¥|￥|CNY|RMB)\\s*([\\d,.]+)`, 'i');
+    const match = String(text).match(pattern);
+    if (match) return { value: Number(match[1].replaceAll(',', '')), raw: match[0], label, method: 'inline-label' };
+  }
+  return null;
+}
+
+function summaryMetric(text, lines, labels, parser, inlineParser = null) {
+  return valueAfterExactLabel(lines, labels, parser) || inlineParser?.(text, labels) || null;
+}
+
 export function parseDeepSeekSummaryText(text) {
-  const lines = String(text ?? '').split(/\r?\n/).map(normalizeLine).filter(Boolean);
+  const rawText = String(text ?? '');
+  const lines = rawText.split(/\r?\n/).map(normalizeLine).filter(Boolean);
   return {
-    balance: valueAfterExactLabel(lines, ['Balance', '余额', '充值余额'], money),
-    cost: valueAfterExactLabel(lines, ['Cost', '费用', '消耗'], money),
+    balance: summaryMetric(rawText, lines, ['Balance', '账户余额', '可用余额', '充值余额', '余额'], money, inlineMoney),
+    cost: summaryMetric(rawText, lines, ['Cost', '费用', '消耗'], money, inlineMoney),
     requests: valueAfterExactLabel(lines, ['API requests', 'API 请求', '请求'], numeric),
     tokens: valueAfterExactLabel(lines, ['Tokens', 'Token'], numeric),
     diagnostics: {
