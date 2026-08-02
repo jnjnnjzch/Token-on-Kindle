@@ -1,23 +1,23 @@
 # Token on Kindle
 
-一个轻量、跨平台的 Tauri 2 应用：在应用自己的系统 WebView 中登录 Codex Analytics 和 DeepSeek Platform，采集额度与用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并在局域网同时提供屏保图片与 Kindle 浏览器页面。
+一个轻量的 Tauri 2 应用：在独立系统 WebView 中登录 Codex Analytics 与 DeepSeek Platform，采集额度和用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并在局域网提供同一张图片的浏览器页面和屏保地址。
 
-## v0.5.0 新功能
+## v0.6.0
 
-- 控制中心可以直接设置 1–1440 分钟的自动刷新间隔；设置保存在应用 WebView 本地存储中，重启后自动恢复。
-- 后台调度器会在修改间隔后立即重新计时，不会继续等待旧周期。
-- 程序启动时自动提供完整 HTTP 页面：`http://局域网IP:端口/`，未越狱 Kindle 可直接用实验性浏览器访问。
-- 保留固定屏保图片地址：`http://局域网IP:端口/dashboard.png`。
-- 浏览器页面使用纯 HTML、无框架、无动画，并通过页面重载和防缓存参数获取最新图片，兼容较旧 Kindle 浏览器。
-- 重做底部解锁安全区：由大面积纯黑底座改为 44 像素高的中灰色中央承托区，白色“滑动以解锁”仍保持高对比度，同时释放更多空间给数据与状态信息。
+- Windows 便携版支持应用内自动更新：下载 GitHub Release ZIP、校验统一 SHA-256 清单、退出应用、替换当前 EXE，并自动重启。
+- Codex 与 DeepSeek 顶部入口显示真实状态：需要登录、已连接、最近同步时间或同步失败，不再永久显示固定的“登录或查看”文案。
+- 采集详情只显示排错所需的账户、额度、模型、月度汇总和解析来源字段，不再输出大量页面内部诊断噪声。
+- 桌面控制中心重新排版为数据源状态、Kindle 预览、局域网地址、输出与同步、应用更新和采集详情。
+- Kindle 浏览器页面与锁屏预览继续使用同一张 PNG，不维护第二套内容。
+- 仓库只保留一套可复用的 `Build and release` Pipeline；PR 用于验证，主线新版本自动构建并发布全部平台。
 
 ## 使用方法
 
 1. 启动应用。
-2. 分别打开 Codex 和 DeepSeek 登录窗口并完成登录。
-3. 在控制中心选择 Kindle 分辨率、设置刷新间隔。
-4. 未越狱 Kindle 在浏览器中打开“浏览器访问地址”。
-5. KOReader、Online Screensaver 或 linkss 用户使用“屏保插件图片地址”。
+2. 点击 Codex 和 DeepSeek 状态卡，完成登录并等待卡片变为“已连接”。
+3. 选择 Kindle 屏幕型号并设置后台刷新间隔。
+4. 未越狱 Kindle 在实验性浏览器中打开“Kindle 浏览器地址”。
+5. KOReader、Online Screensaver 或 linkss 用户使用折叠区域中的“屏保插件图片地址”。
 
 电脑与 Kindle 必须连接同一局域网。不要把服务端口映射到公网。
 
@@ -31,7 +31,7 @@ http://192.168.1.20:8765/dashboard.png  固定 PNG 图片
 http://192.168.1.20:8765/healthz        服务状态
 ```
 
-根页面会使用与后台采集相同的刷新间隔自动重新载入。点击图片也可立即刷新。
+根页面只负责等比显示 `/dashboard.png`，并按照应用设置的刷新间隔重新载入，因此 HTTP 页面、桌面预览和屏保插件始终一致。
 
 ## Kindle 原生分辨率
 
@@ -48,7 +48,7 @@ http://192.168.1.20:8765/healthz        服务状态
 
 ## 数据来源
 
-Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后的 Platform 页面会话读取页面自身使用的同源接口：
+Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后的 Platform 会话读取页面自身调用的同源接口：
 
 ```text
 /api/v0/users/get_user_summary
@@ -56,17 +56,28 @@ Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后
 /api/v0/usage/cost?month=...&year=...
 ```
 
-它们用于获取余额、费用、请求数、Flash/Pro Token、缓存命中 Token、未命中 Token、输出 Token与缓存命中率。项目不需要模型调用用的 `sk-...` API Key，也不会把账号 Cookie 发送给 Kindle。
+这些数据用于展示余额、今日与本月费用、累计费用、请求数、Flash/Pro Token、缓存命中 Token、未命中 Token、输出 Token 和缓存命中率。项目不需要模型调用使用的 `sk-...` API Key，也不会把账号 Cookie 发送给 Kindle。
+
+## 自动更新
+
+Windows 便携版发现新版本后会显示“下载、安装并重启”：
+
+1. 从本项目 GitHub Release 下载 Windows ZIP 与 `SHA256SUMS.txt`。
+2. 校验 ZIP 的 SHA-256。
+3. 解压新 EXE，并启动独立替换进程。
+4. 当前应用退出后，替换进程覆盖旧 EXE、重新启动应用并清理临时文件。
+
+自动替换要求当前 EXE 所在目录可写。macOS、Linux 和 Android 目前会打开 Release 页面，由用户安装对应平台版本。应用更新不会删除 WebView 数据目录，因此登录状态与本地设置会保留。
 
 ## 平台与发布
 
-- Windows x64：主要支持平台，提供便携 EXE/ZIP。
+- Windows x64：主要支持平台，提供便携 EXE/ZIP和应用内自更新。
 - macOS arm64：使用系统 WKWebView。
 - Linux x64：使用 WebKitGTK，发布 AppImage。
-- Android arm64：提供 debug APK；长期后台运行仍需要前台服务支持。
+- Android arm64：提供 debug APK。
 - KOReader：提供插件 ZIP，可同步图片并设置为休眠屏幕。
 
-正式版本发布在 GitHub Releases。CI 只执行快速测试和 Windows 便携 EXE 验证；完整多平台打包只在 Release 标签或手动发布时运行，避免重复构建。
+正式版本发布在 GitHub Releases。单一 Pipeline 支持 PR、主线、版本标签、手动发布与 `workflow_call`：PR 运行测试和 Windows 验证；主线出现未发布版本时构建全平台并创建 Release。
 
 ## 本地开发
 
@@ -86,6 +97,6 @@ src-tauri/target/release/token-on-kindle.exe
 
 - HTTP 服务只提供只读页面、PNG 和健康检查。
 - 远程 Codex/DeepSeek 页面不会获得 Tauri 本地命令权限。
+- 更新器只接受本项目 GitHub Release 地址，并在替换前校验 SHA-256。
 - 登录状态保存在操作系统分配给该应用的 WebView 用户数据目录。
-- 更新程序不会主动删除登录资料。
 - 不要将局域网端口暴露到公网。
