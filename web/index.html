@@ -22,12 +22,10 @@
 
     <section class="toolbar" aria-label="数据源控制">
       <button id="open-codex" class="source-button">
-        <span class="button-kicker">CODEX</span>
-        <span>登录或查看额度</span>
+        <span class="button-kicker">CODEX</span><span>登录或查看额度</span>
       </button>
       <button id="open-deepseek" class="source-button">
-        <span class="button-kicker">DEEPSEEK</span>
-        <span>登录或查看用量</span>
+        <span class="button-kicker">DEEPSEEK</span><span>登录或查看用量</span>
       </button>
       <button id="refresh" class="refresh-button">立即刷新用量</button>
     </section>
@@ -35,16 +33,11 @@
     <section class="workspace">
       <article class="panel preview-panel">
         <div class="panel-heading">
-          <div>
-            <span class="eyebrow">KINDLE PREVIEW</span>
-            <h2>锁屏预览</h2>
-          </div>
-          <div class="format-note">600 × 800 · 8 位灰度 PNG</div>
+          <div><span class="eyebrow">KINDLE PREVIEW</span><h2>锁屏预览</h2></div>
+          <div id="format-note" class="format-note">600 × 800 · 8 位灰度 PNG</div>
         </div>
         <div class="preview-stage">
-          <div class="kindle-frame">
-            <canvas id="dashboard" width="600" height="800"></canvas>
-          </div>
+          <div class="kindle-frame"><canvas id="dashboard" width="600" height="800"></canvas></div>
         </div>
       </article>
 
@@ -57,6 +50,15 @@
           <p class="help-text">将地址填入 Online Screensaver 的 <code>IMAGE_URI</code>。电脑与 Kindle 需要连接同一局域网。</p>
         </section>
 
+        <section class="panel device-panel">
+          <span class="eyebrow">DEVICE PROFILE</span>
+          <h2>Kindle 屏幕型号</h2>
+          <label class="profile-label" for="kindle-profile">原生输出分辨率</label>
+          <select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select>
+          <p id="profile-description" class="help-text">Kindle 4/5/7/8/10 等经典 6 英寸机型</p>
+          <p class="profile-note">切换后立即重新生成图片；访问地址保持不变。</p>
+        </section>
+
         <section class="panel schedule-panel">
           <span class="eyebrow">BACKGROUND SYNC</span>
           <h2>自动更新</h2>
@@ -67,10 +69,7 @@
 
         <section class="panel app-update-panel">
           <div class="panel-heading compact-heading">
-            <div>
-              <span class="eyebrow">APP UPDATE</span>
-              <h2>应用更新</h2>
-            </div>
+            <div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div>
             <span id="installed-version" class="format-note">读取版本中…</span>
           </div>
           <p id="update-status" class="update-status">启动后会自动检查 GitHub Releases</p>
