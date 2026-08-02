@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cross-platform Tauri app that turns Codex and DeepSeek web usage into a Kindle screensaver.",
   "scripts": {
-    "test": "node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/deepseek-summary-parser.mjs && node --check web/update.js",
+    "test": "node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/deepseek-summary-parser.mjs && node --check web/update.js && node --check tools/sync-version.mjs",
     "smoke": "node tools/smoke-server.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
