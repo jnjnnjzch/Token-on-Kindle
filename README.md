@@ -2,6 +2,14 @@
 
 一个轻量的 Tauri 2 应用：在独立系统 WebView 中登录 Codex Analytics 与 DeepSeek Platform，采集额度和用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并在局域网提供同一张图片的浏览器页面和屏保地址。
 
+## v0.6.1
+
+- Windows、macOS 与 Linux 使用正式应用图标作为任务栏、Dock、菜单栏或系统托盘图标。
+- 托盘实时显示 Codex、DeepSeek 与应用更新状态。
+- 托盘支持显示或隐藏看板、暂停或恢复采集、打开或复制 Kindle 地址、检查更新和退出。
+- 支持桌面端开机启动；macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。
+- 主界面新增“任务栏与后台”区域，与托盘中的暂停状态和开机启动设置保持同步。
+
 ## v0.6.0
 
 - Windows 便携版支持应用内自动更新：下载 GitHub Release ZIP、校验统一 SHA-256 清单、退出应用、替换当前 EXE，并自动重启。
@@ -31,7 +39,7 @@ http://192.168.1.20:8765/dashboard.png  固定 PNG 图片
 http://192.168.1.20:8765/healthz        服务状态
 ```
 
-根页面只负责等比显示 `/dashboard.png`，并按照应用设置的刷新间隔重新载入，因此 HTTP 页面、桌面预览和屏保插件始终一致。
+浏览器根页面只负责显示并刷新 `/dashboard.png`，因此它与应用预览和 Kindle 屏保始终使用同一套渲染结果。
 
 ## Kindle 原生分辨率
 
@@ -48,7 +56,7 @@ http://192.168.1.20:8765/healthz        服务状态
 
 ## 数据来源
 
-Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后的 Platform 会话读取页面自身调用的同源接口：
+Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后的 Platform 页面会话读取页面自身使用的同源接口：
 
 ```text
 /api/v0/users/get_user_summary
@@ -56,28 +64,17 @@ Codex 数据来自登录后的 Codex Analytics 页面。DeepSeek 使用登录后
 /api/v0/usage/cost?month=...&year=...
 ```
 
-这些数据用于展示余额、今日与本月费用、累计费用、请求数、Flash/Pro Token、缓存命中 Token、未命中 Token、输出 Token 和缓存命中率。项目不需要模型调用使用的 `sk-...` API Key，也不会把账号 Cookie 发送给 Kindle。
-
-## 自动更新
-
-Windows 便携版发现新版本后会显示“下载、安装并重启”：
-
-1. 从本项目 GitHub Release 下载 Windows ZIP 与 `SHA256SUMS.txt`。
-2. 校验 ZIP 的 SHA-256。
-3. 解压新 EXE，并启动独立替换进程。
-4. 当前应用退出后，替换进程覆盖旧 EXE、重新启动应用并清理临时文件。
-
-自动替换要求当前 EXE 所在目录可写。macOS、Linux 和 Android 目前会打开 Release 页面，由用户安装对应平台版本。应用更新不会删除 WebView 数据目录，因此登录状态与本地设置会保留。
+这些接口用于获取余额、累计费用、月度费用、请求数、Flash/Pro Token、缓存命中 Token、未命中 Token、输出 Token 与缓存命中率。项目不需要模型调用用的 `sk-...` API Key，也不会把账号 Cookie 发送给 Kindle。
 
 ## 平台与发布
 
-- Windows x64：主要支持平台，提供便携 EXE/ZIP和应用内自更新。
-- macOS arm64：使用系统 WKWebView。
-- Linux x64：使用 WebKitGTK，发布 AppImage。
-- Android arm64：提供 debug APK。
-- KOReader：提供插件 ZIP，可同步图片并设置为休眠屏幕。
+- Windows x64：主要支持平台，提供便携 EXE/ZIP，并支持自动安装更新和重启。
+- macOS arm64：提供 `.app` ZIP，使用系统 WKWebView；更新检查后手动替换应用。
+- Linux x64：发布 AppImage；更新检查后手动替换文件。
+- Android arm64：提供 debug APK；不提供桌面托盘或开机启动控制。
+- KOReader：提供插件 ZIP，用于同步图片并设置休眠屏幕，不提供桌面托盘。
 
-正式版本发布在 GitHub Releases。单一 Pipeline 支持 PR、主线、版本标签、手动发布与 `workflow_call`：PR 运行测试和 Windows 验证；主线出现未发布版本时构建全平台并创建 Release。
+正式版本发布在 GitHub Releases。PR 运行测试和 Windows 便携 EXE 验证；主线新版本由同一份 Pipeline 构建所有平台并创建 Release。
 
 ## 本地开发
 
@@ -97,6 +94,7 @@ src-tauri/target/release/token-on-kindle.exe
 
 - HTTP 服务只提供只读页面、PNG 和健康检查。
 - 远程 Codex/DeepSeek 页面不会获得 Tauri 本地命令权限。
-- 更新器只接受本项目 GitHub Release 地址，并在替换前校验 SHA-256。
 - 登录状态保存在操作系统分配给该应用的 WebView 用户数据目录。
+- Windows 更新程序只接受本项目 GitHub Release 地址，并在替换 EXE 前校验 SHA-256。
+- 更新和托盘设置不会删除应用数据或登录资料。
 - 不要将局域网端口暴露到公网。

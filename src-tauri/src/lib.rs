@@ -17,11 +17,10 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use tauri::{
-    image::Image,
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+mod desktop;
+use desktop::{
+    copy_browser_url, get_desktop_state, open_browser_url, set_autostart_enabled,
+    set_collection_paused, set_tray_source_status, set_tray_update_status,
 };
 
 const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
@@ -518,7 +517,7 @@ fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
         let Ok((_guard, timeout)) = result else {
             return;
         };
-        if timeout.timed_out() {
+        if timeout.timed_out() && !desktop::is_paused(&app) {
             let _ = reload_sources(&app);
         }
     });
@@ -780,67 +779,6 @@ fn start_http_server(
     });
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn tray_icon() -> Image<'static> {
-    const SIZE: u32 = 32;
-    let mut rgba = vec![255u8; (SIZE * SIZE * 4) as usize];
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let border = x < 3 || y < 3 || x >= SIZE - 3 || y >= SIZE - 3;
-            let bar = (8..=23).contains(&y) && x >= 7 && x <= 24;
-            let fill = bar && x <= 18;
-            if border || fill {
-                let offset = ((y * SIZE + x) * 4) as usize;
-                rgba[offset] = 0;
-                rgba[offset + 1] = 0;
-                rgba[offset + 2] = 0;
-                rgba[offset + 3] = 255;
-            }
-        }
-    }
-    Image::new_owned(rgba, SIZE, SIZE)
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "显示看板", true, None::<&str>)?;
-    let codex = MenuItem::with_id(app, "codex", "打开 Codex", true, None::<&str>)?;
-    let deepseek = MenuItem::with_id(app, "deepseek", "打开 DeepSeek", true, None::<&str>)?;
-    let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &codex, &deepseek, &refresh, &quit])?;
-    TrayIconBuilder::new()
-        .icon(tray_icon())
-        .tooltip("Token on Kindle")
-        .menu(&menu)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            "codex" => {
-                let _ = open_source_impl(app, "codex");
-            }
-            "deepseek" => {
-                let _ = open_source_impl(app, "deepseek");
-            }
-            "refresh" => {
-                let _ = reload_sources(app);
-            }
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        .build(app)?;
-    Ok(())
-}
-
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn build_tray(_app: &tauri::App) -> tauri::Result<()> {
-    Ok(())
-}
-
 #[cfg_attr(any(target_os = "android", target_os = "ios"), tauri::mobile_entry_point)]
 pub fn run() {
     let (listener, port) = bind_http_server().expect("failed to bind local HTTP server");
@@ -849,6 +787,7 @@ pub fn run() {
     start_http_server(listener, Arc::clone(&png), Arc::clone(&refresh));
 
     tauri::Builder::default()
+        .manage(desktop::DesktopState::default())
         .manage(AppState {
             metrics: Mutex::new(MetricsState::default()),
             png,
@@ -866,9 +805,17 @@ pub fn run() {
             set_refresh_interval,
             open_source,
             refresh_sources,
-            install_update
+            install_update,
+            get_desktop_state,
+            set_collection_paused,
+            set_autostart_enabled,
+            set_tray_source_status,
+            set_tray_update_status,
+            copy_browser_url,
+            open_browser_url
         ])
         .setup(move |app| {
+            desktop::init_plugins(app)?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Token on Kindle")
                 .inner_size(1180.0, 820.0)
@@ -884,16 +831,12 @@ pub fn run() {
             }
 
             start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));
-            build_tray(app)?;
+            if let Err(error) = desktop::build_tray(app) {
+                eprintln!("system tray unavailable: {error}");
+            }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
+        .on_window_event(|window, event| desktop::handle_window_event(window, event))
         .run(tauri::generate_context!())
         .expect("error while running Token on Kindle");
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Token on Kindle</title>
-  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="update.css">
+  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="update.css"><link rel="stylesheet" href="desktop.css">
 </head>
 <body>
   <main class="app-shell">
@@ -21,11 +21,11 @@
       <aside class="control-column">
         <section class="panel connection-panel"><div class="section-title"><div><span class="eyebrow">KINDLE CONNECTION</span><h2>局域网访问</h2></div><span class="section-badge">同一张 PNG</span></div><label class="field-label">Kindle 浏览器地址</label><div class="url-row"><div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div><button id="copy-browser" class="icon-button">复制</button></div><p class="help-text">未越狱 Kindle 直接打开。HTTP 页面与锁屏预览使用完全相同的图片。</p><details class="secondary-endpoint"><summary>屏保插件图片地址</summary><div class="url-row compact-row"><div class="url-box"><code id="url">正在读取图片地址…</code></div><button id="copy" class="icon-button">复制</button></div></details></section>
         <section class="panel settings-panel"><div class="section-title"><div><span class="eyebrow">OUTPUT & SYNC</span><h2>输出与同步</h2></div></div><div class="settings-grid"><div class="setting-block"><label class="field-label" for="kindle-profile">Kindle 屏幕型号</label><select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select><p id="profile-description" class="field-note">Kindle 经典机型</p></div><div class="setting-block"><label class="field-label" for="refresh-minutes">后台刷新间隔</label><div class="interval-control"><input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" value="10"><button id="save-refresh" class="save-button">保存</button></div><p id="refresh-value" class="field-note">每 10 分钟刷新</p></div></div></section>
-        <section class="panel app-update-panel"><div class="section-title"><div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div><span id="installed-version" class="format-note">读取版本中…</span></div><p id="update-status" class="update-status">启动后自动检查 GitHub Releases</p><div class="update-actions"><button id="check-update" class="secondary-action">检查更新</button><button id="install-update" class="install-button" hidden>下载、安装并重启</button></div><p class="help-text">Windows 便携版会校验 SHA-256，退出后替换当前 EXE 并自动重启；应用数据和登录状态不会删除。</p></section>
+        <section id="desktop-integration" class="panel desktop-panel" hidden><div class="section-title"><div><span class="eyebrow">DESKTOP INTEGRATION</span><h2>任务栏与后台</h2></div><span class="section-badge">桌面端</span></div><div class="desktop-state"><span class="desktop-indicator" aria-hidden="true"></span><span class="desktop-state-copy"><strong id="tray-state">正在读取系统托盘…</strong><small id="tray-detail">关闭窗口后的行为将在这里显示</small></span></div><div class="desktop-actions"><button id="toggle-collection" class="desktop-action">暂停后台采集</button><button id="toggle-autostart" class="desktop-action">启用开机启动</button><button id="open-system-browser" class="desktop-action">打开 Kindle 页面</button><button id="copy-kindle-url" class="desktop-action">复制 Kindle 地址</button></div><p class="help-text">左键单击托盘图标可显示或隐藏看板；Windows 双击会直接显示。macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。</p></section><section class="panel app-update-panel"><div class="section-title"><div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div><span id="installed-version" class="format-note">读取版本中…</span></div><p id="update-status" class="update-status">启动后自动检查 GitHub Releases</p><div class="update-actions"><button id="check-update" class="secondary-action">检查更新</button><button id="install-update" class="install-button" hidden>下载、安装并重启</button></div><p class="help-text">Windows 便携版会校验 SHA-256，退出后替换当前 EXE 并自动重启；应用数据和登录状态不会删除。</p></section>
         <details class="panel debug-panel"><summary><span>采集详情</span><small>仅保留排查所需字段</small></summary><div class="status-grid"><article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article><article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article></div></details>
       </aside>
     </section>
   </main>
-  <script type="module" src="app.js"></script><script type="module" src="update.js"></script>
+  <script type="module" src="app.js"></script><script type="module" src="update.js"></script><script type="module" src="desktop.js"></script>
 </body>
 </html>
