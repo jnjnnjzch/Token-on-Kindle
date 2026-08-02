@@ -15,6 +15,8 @@ test('repository keeps one reusable build-to-release workflow', async () => {
   assert.match(source, /pull_request:/);
   assert.match(source, /tags:\s*\['v\*'\]/);
   assert.match(source, /workflow_dispatch:/);
+  assert.match(source, /refs\/heads\/main/);
+  assert.match(source, /refs\/tags\/\$package_version/);
   assert.match(source, /softprops\/action-gh-release@v2/);
   assert.match(source, /needs\.prepare\.outputs\.publish == 'true'/);
 });
