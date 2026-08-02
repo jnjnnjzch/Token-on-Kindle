@@ -18,9 +18,12 @@ const ICON_ICO: &[u8] = &[
     0x80,0x07,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
 ];
 
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
+}
+
 fn ensure_icons() {
-    let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let icon_dir = manifest.join("icons");
+    let icon_dir = manifest_dir().join("icons");
     fs::create_dir_all(&icon_dir).expect("create icons directory");
 
     let ico_path = icon_dir.join("icon.ico");
@@ -35,8 +38,25 @@ fn ensure_icons() {
     }
 }
 
+fn generate_deepseek_browser_parser() {
+    let manifest = manifest_dir();
+    let source_path = manifest.join("../shared/deepseek-response-parser-v2.mjs");
+    let target_path = manifest.join("../web/deepseek-response-parser.generated.js");
+    let source = fs::read_to_string(&source_path).expect("read DeepSeek parser module");
+    let transformed = source.replace(
+        "export function parseDeepSeekResponses",
+        "function parseDeepSeekResponses",
+    );
+    let browser_script = format!(
+        "(() => {{\n{transformed}\nwindow.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;\n}})();\n"
+    );
+    fs::write(target_path, browser_script).expect("write generated DeepSeek browser parser");
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=../web/extractor.js");
+    println!("cargo:rerun-if-changed=../shared/deepseek-response-parser-v2.mjs");
     ensure_icons();
+    generate_deepseek_browser_parser();
     tauri_build::build()
 }
