@@ -31,7 +31,6 @@ fn ensure_icons() {
         fs::write(ico_path, ICON_ICO).expect("write generated icon.ico");
     }
 
-    // The ICO directory and entry occupy 22 bytes; its payload is a complete PNG.
     let png_path = icon_dir.join("icon.png");
     if !png_path.exists() {
         fs::write(png_path, &ICON_ICO[22..]).expect("write generated icon.png");
@@ -61,11 +60,18 @@ fn generate_extractor() {
     const rangeCost = cardMetric(['cost', '费用', '消耗'], money);
     const rangeTokens = cardMetric(['tokens', 'token'], numeric);
     const rangeRequests = cardMetric(['api requests', '请求'], numeric);"#;
-    let new_summary_reads = r#"    const visibleSummary = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__?.(document.body?.innerText || '') || {};
-    const balance = visibleSummary.balance || cardMetric(['balance', '余额'], money);
-    const rangeCost = visibleSummary.cost || cardMetric(['cost', '费用', '消耗'], money);
-    const rangeTokens = visibleSummary.tokens || cardMetric(['tokens', 'token'], numeric);
-    const rangeRequests = visibleSummary.requests || cardMetric(['api requests', '请求'], numeric);"#;
+    let new_summary_reads = r#"    let visibleSummary = {};
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      visibleSummary = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__?.(document.body?.innerText || '') || {};
+      if (visibleSummary.balance && visibleSummary.cost && visibleSummary.tokens && visibleSummary.requests) break;
+      await sleep(400);
+    }
+    const previousSummary = window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ || {};
+    const balance = visibleSummary.balance || previousSummary.balance || cardMetric(['balance', '余额'], money);
+    const rangeCost = visibleSummary.cost || previousSummary.cost || cardMetric(['cost', '费用', '消耗'], money);
+    const rangeTokens = visibleSummary.tokens || previousSummary.tokens || cardMetric(['tokens', 'token'], numeric);
+    const rangeRequests = visibleSummary.requests || previousSummary.requests || cardMetric(['api requests', '请求'], numeric);
+    window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ = { balance, cost: rangeCost, tokens: rangeTokens, requests: rangeRequests };"#;
     let base = original_base.replace(old_summary_reads, new_summary_reads);
     if base == original_base {
         panic!("DeepSeek summary injection point changed; update build.rs instead of silently shipping a stale extractor");
