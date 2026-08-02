@@ -1,101 +1,31 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Token on Kindle</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="update.css">
-  <link rel="stylesheet" href="profiles.css">
+  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="update.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true"><span></span></div>
-        <div>
-          <h1>Token on Kindle</h1>
-          <p>Codex 与 DeepSeek 的电子墨水用量看板</p>
-        </div>
-      </div>
+      <div class="brand"><div class="brand-mark" aria-hidden="true"><span></span></div><div><h1>Token on Kindle</h1><p>Codex 与 DeepSeek 的电子墨水用量看板</p></div></div>
       <div id="service" class="service-pill">正在启动后台服务…</div>
     </header>
-
-    <section class="toolbar" aria-label="数据源控制">
-      <button id="open-codex" class="source-button"><span class="button-kicker">CODEX</span><span>登录或查看额度</span></button>
-      <button id="open-deepseek" class="source-button"><span class="button-kicker">DEEPSEEK</span><span>登录或查看用量</span></button>
-      <button id="refresh" class="refresh-button">立即刷新用量</button>
+    <section class="source-strip" aria-label="数据源状态与控制">
+      <button id="open-codex" class="source-card" data-state="idle"><span class="source-monogram">C</span><span class="source-copy"><span class="button-kicker">CODEX</span><strong id="codex-connection">需要登录</strong><small id="codex-detail">点击打开登录页面</small></span><span class="source-action">打开</span></button>
+      <button id="open-deepseek" class="source-card" data-state="idle"><span class="source-monogram">D</span><span class="source-copy"><span class="button-kicker">DEEPSEEK</span><strong id="deepseek-connection">需要登录</strong><small id="deepseek-detail">点击打开登录页面</small></span><span class="source-action">打开</span></button>
+      <button id="refresh" class="refresh-button"><span>立即刷新</span><small>重新加载两个数据源</small></button>
     </section>
-
     <section class="workspace">
-      <article class="panel preview-panel">
-        <div class="panel-heading">
-          <div><span class="eyebrow">KINDLE PREVIEW</span><h2>锁屏预览</h2></div>
-          <div id="format-note" class="format-note">600 × 800 · 8 位灰度 PNG</div>
-        </div>
-        <div class="preview-stage"><div class="kindle-frame"><canvas id="dashboard" width="600" height="800"></canvas></div></div>
-      </article>
-
-      <aside class="side-column">
-        <section class="panel connection-panel">
-          <span class="eyebrow">KINDLE BROWSER</span><h2>浏览器访问地址</h2>
-          <p class="url-label">未越狱 Kindle 直接打开</p>
-          <div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div>
-          <button id="copy-browser" class="copy-button">复制浏览器地址</button>
-          <p class="help-text">电脑与 Kindle 连接同一局域网后，在 Kindle 实验性浏览器中打开此地址。页面会按下方设置的间隔自动刷新。</p>
-
-          <div class="secondary-url">
-            <p class="url-label">屏保插件图片地址</p>
-            <div class="url-box compact-url"><code id="url">正在读取图片地址…</code></div>
-            <button id="copy" class="copy-button secondary-button">复制图片地址</button>
-          </div>
-        </section>
-
-        <section class="panel device-panel">
-          <span class="eyebrow">DEVICE PROFILE</span><h2>Kindle 屏幕型号</h2>
-          <label class="profile-label" for="kindle-profile">原生输出分辨率</label>
-          <select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select>
-          <p id="profile-description" class="help-text">Kindle 4/5/7/8/10 等经典 6 英寸机型</p>
-          <p class="profile-note">切换后立即重新生成图片；两个访问地址保持不变。</p>
-        </section>
-
-        <section class="panel schedule-panel">
-          <span class="eyebrow">BACKGROUND SYNC</span><h2>自动更新</h2>
-          <label class="interval-label" for="refresh-minutes">刷新间隔（分钟）</label>
-          <div class="interval-control">
-            <input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" inputmode="numeric" value="10">
-            <button id="save-refresh" class="save-button">保存</button>
-          </div>
-          <p id="refresh-value" class="interval-status">当前每 10 分钟刷新一次</p>
-          <div class="schedule-row"><strong>常驻</strong><span>关闭窗口后继续在托盘运行</span></div>
-          <div class="schedule-row"><strong>网页</strong><span>Kindle 浏览器页面使用相同刷新间隔</span></div>
-          <div class="schedule-row"><strong>安全区</strong><span>底部窄幅中灰承托区保证白色解锁文字清晰</span></div>
-        </section>
-
-        <section class="panel app-update-panel">
-          <div class="panel-heading compact-heading">
-            <div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div>
-            <span id="installed-version" class="format-note">读取版本中…</span>
-          </div>
-          <p id="update-status" class="update-status">启动后会自动检查 GitHub Releases</p>
-          <div class="update-actions">
-            <button id="check-update" class="copy-button">检查更新</button>
-            <a id="download-update" class="download-button" hidden target="_blank" rel="noreferrer">下载新版本</a>
-          </div>
-          <p class="help-text">更新只替换应用程序，不删除系统应用数据目录。Codex 与 DeepSeek 登录状态会继续保留。</p>
-        </section>
-
-        <details class="panel debug-panel">
-          <summary>查看采集详情</summary>
-          <div class="status-grid">
-            <article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article>
-            <article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article>
-          </div>
-        </details>
+      <article class="panel preview-panel"><div class="panel-heading"><div><span class="eyebrow">KINDLE PREVIEW</span><h2>锁屏预览</h2></div><div id="format-note" class="format-note">600 × 800 · 8 位灰度 PNG</div></div><div class="preview-stage"><div class="kindle-frame"><canvas id="dashboard" width="600" height="800"></canvas></div></div></article>
+      <aside class="control-column">
+        <section class="panel connection-panel"><div class="section-title"><div><span class="eyebrow">KINDLE CONNECTION</span><h2>局域网访问</h2></div><span class="section-badge">同一张 PNG</span></div><label class="field-label">Kindle 浏览器地址</label><div class="url-row"><div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div><button id="copy-browser" class="icon-button">复制</button></div><p class="help-text">未越狱 Kindle 直接打开。HTTP 页面与锁屏预览使用完全相同的图片。</p><details class="secondary-endpoint"><summary>屏保插件图片地址</summary><div class="url-row compact-row"><div class="url-box"><code id="url">正在读取图片地址…</code></div><button id="copy" class="icon-button">复制</button></div></details></section>
+        <section class="panel settings-panel"><div class="section-title"><div><span class="eyebrow">OUTPUT & SYNC</span><h2>输出与同步</h2></div></div><div class="settings-grid"><div class="setting-block"><label class="field-label" for="kindle-profile">Kindle 屏幕型号</label><select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select><p id="profile-description" class="field-note">Kindle 经典机型</p></div><div class="setting-block"><label class="field-label" for="refresh-minutes">后台刷新间隔</label><div class="interval-control"><input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" value="10"><button id="save-refresh" class="save-button">保存</button></div><p id="refresh-value" class="field-note">每 10 分钟刷新</p></div></div></section>
+        <section class="panel app-update-panel"><div class="section-title"><div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div><span id="installed-version" class="format-note">读取版本中…</span></div><p id="update-status" class="update-status">启动后自动检查 GitHub Releases</p><div class="update-actions"><button id="check-update" class="secondary-action">检查更新</button><button id="install-update" class="install-button" hidden>下载、安装并重启</button></div><p class="help-text">Windows 便携版会校验 SHA-256，退出后替换当前 EXE 并自动重启；应用数据和登录状态不会删除。</p></section>
+        <details class="panel debug-panel"><summary><span>采集详情</span><small>仅保留排查所需字段</small></summary><div class="status-grid"><article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article><article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article></div></details>
       </aside>
     </section>
   </main>
-  <script type="module" src="app.js"></script>
-  <script type="module" src="update.js"></script>
+  <script type="module" src="app.js"></script><script type="module" src="update.js"></script>
 </body>
 </html>
