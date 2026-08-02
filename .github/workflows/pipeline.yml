@@ -9,24 +9,24 @@ permissions:
 
 jobs:
   generate:
-    name: Generate v0.6.0 maintenance sources
+    name: Export final reusable pipeline
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Generate release sources
-        run: python3 tools/run-v0.6.0-generator.py
-      - name: Commit generated sources
+      - name: Export final pipeline
+        run: python3 tools/export-final-pipeline.py
+      - name: Commit exported pipeline
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add pipeline.final.yml
           if git diff --cached --quiet; then
-            echo 'No generated changes to commit'
+            echo 'No pipeline export to commit'
             exit 0
           fi
-          git commit -m 'v0.6.0: automatic updater, concise diagnostics, repository cleanup, and UI refresh'
+          git commit -m 'Export final reusable pipeline'
           git push origin HEAD:${GITHUB_HEAD_REF:-feat/v0.6.0-maintenance}
