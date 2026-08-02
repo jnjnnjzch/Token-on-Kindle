@@ -15,11 +15,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Generate release sources
-        run: node tools/generate-v0.6.0.mjs
+        run: python3 tools/generate-v0.6.0.py
       - name: Commit generated sources
         shell: bash
         run: |
