@@ -1,7 +1,7 @@
 use super::{reload_sources, runtime_settings, AppState};
 use serde::Serialize;
 use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, Window};
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tauri::{
@@ -344,14 +344,14 @@ pub(crate) fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let _ = tray.set_tooltip(Some("Token on Kindle · 托盘已就绪"));
     #[cfg(target_os = "macos")]
     app.handle().set_dock_visibility(false);
-    rebuild_menu(app.handle()).map_err(tauri::Error::AssetNotFound)?;
+    let _ = rebuild_menu(app.handle());
     Ok(())
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub(crate) fn build_tray(_app: &tauri::App) -> tauri::Result<()> { Ok(()) }
 
-pub(crate) fn handle_window_event(window: &WebviewWindow, event: &tauri::WindowEvent) {
+pub(crate) fn handle_window_event(window: &Window, event: &tauri::WindowEvent) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
         if window.label() != "main" || window.app_handle().state::<DesktopState>().tray_available.load(Ordering::Relaxed) {
