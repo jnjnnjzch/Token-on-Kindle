@@ -82,7 +82,7 @@ fn generate_extractor() {
     const rangeTokens = visibleSummary.tokens || previousSummary.tokens || cardMetric(['tokens', 'token'], numeric);
     const rangeRequests = visibleSummary.requests || previousSummary.requests || cardMetric(['api requests', '请求'], numeric);
     window.__TOKEN_ON_KINDLE_LAST_SUMMARY__ = { balance, cost: rangeCost, tokens: rangeTokens, requests: rangeRequests };"#;
-    let base = original_base.replace(old_summary_reads, new_summary_reads);
+    let mut base = original_base.replace(old_summary_reads, new_summary_reads);
     if base == original_base {
         panic!("DeepSeek summary injection point changed; update build.rs instead of silently shipping a stale extractor");
     }
