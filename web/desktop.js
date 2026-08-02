@@ -90,4 +90,6 @@ listen?.('desktop-update-action', event => {
 });
 
 await loadDesktopState();
+setTimeout(loadDesktopState, 600);
+setTimeout(loadDesktopState, 1800);
 scheduleTraySync();

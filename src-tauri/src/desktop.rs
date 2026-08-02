@@ -341,6 +341,7 @@ pub(crate) fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         })
         .build(app)?;
     app.state::<DesktopState>().tray_available.store(true, Ordering::Relaxed);
+    let _ = app.handle().emit_to("main", "desktop-state-changed", info(app.handle()));
     let _ = tray.set_tooltip(Some("Token on Kindle · 托盘已就绪"));
     #[cfg(target_os = "macos")]
     app.handle().set_dock_visibility(false);

@@ -85,6 +85,7 @@ async function installAvailableUpdate() {
   }
   setBusy(true);
   setStatus(`正在下载 ${latest} 并校验 SHA-256…`, 'available');
+  localStorage.setItem('token-on-kindle:pending-update', latest);
   try {
     await invoke('install_update', {
       request: {
@@ -96,6 +97,7 @@ async function installAvailableUpdate() {
     });
     setStatus('校验完成，应用正在退出、替换并自动重启…', 'available');
   } catch (error) {
+    localStorage.removeItem('token-on-kindle:pending-update');
     setBusy(false);
     setStatus(`自动更新失败：${error}`, 'error');
   }
@@ -109,4 +111,10 @@ function shouldAutoCheck() {
 document.querySelector('#check-update')?.addEventListener('click', () => checkForUpdates({ manual: true }));
 document.querySelector('#install-update')?.addEventListener('click', installAvailableUpdate);
 document.querySelector('#installed-version').textContent = `当前 ${APP_VERSION}`;
-if (shouldAutoCheck()) setTimeout(() => checkForUpdates(), 2500);
+const pendingUpdate = localStorage.getItem('token-on-kindle:pending-update');
+if (pendingUpdate && compareVersions(APP_VERSION, pendingUpdate) >= 0) {
+  localStorage.removeItem('token-on-kindle:pending-update');
+  setStatus(`更新成功 · 当前 ${APP_VERSION}`, 'ok');
+} else if (shouldAutoCheck()) {
+  setTimeout(() => checkForUpdates(), 2500);
+}
