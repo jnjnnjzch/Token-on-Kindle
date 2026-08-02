@@ -67,6 +67,8 @@ jobs:
       prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -89,6 +91,14 @@ jobs:
             version='${{ github.ref_name }}'
             publish='true'
             prerelease='false'
+          elif [[ '${{ github.event_name }}' == 'push' && '${{ github.ref }}' == 'refs/heads/main' ]]; then
+            version="$package_version"
+            prerelease='false'
+            if git rev-parse -q --verify "refs/tags/$package_version" >/dev/null; then
+              publish='false'
+            else
+              publish='true'
+            fi
           else
             version="$package_version"
             publish='false'
