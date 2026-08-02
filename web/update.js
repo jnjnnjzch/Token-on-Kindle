@@ -1,7 +1,10 @@
 import { APP_VERSION } from './version.js';
 
+const invoke = window.__TAURI__?.core?.invoke;
 const GITHUB_LATEST_RELEASE = 'https://api.github.com/repos/jnjnnjzch/Token-on-Kindle/releases/latest';
 const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+let availableRelease = null;
 
 function normalizeVersion(value) {
   return String(value || '0.0.0').trim().replace(/^v/i, '').split('-')[0]
@@ -26,57 +29,75 @@ function platformAsset(assets = []) {
   return assets.find(asset => pattern?.test(asset.name)) || null;
 }
 
-function currentVersion() {
-  return APP_VERSION;
-}
-
 function setStatus(message, state = 'neutral') {
   const status = document.querySelector('#update-status');
-  if (!status) return;
   status.textContent = message;
   status.dataset.state = state;
 }
 
-async function checkForUpdates({ manual = false } = {}) {
-  const button = document.querySelector('#check-update');
-  const download = document.querySelector('#download-update');
-  if (button) button.disabled = true;
-  if (manual) setStatus('正在检查 GitHub Releases…');
+function setBusy(busy) {
+  for (const selector of ['#check-update', '#install-update']) {
+    const control = document.querySelector(selector);
+    if (control) control.disabled = busy;
+  }
+}
 
+async function checkForUpdates({ manual = false } = {}) {
+  const install = document.querySelector('#install-update');
+  setBusy(true);
+  if (manual) setStatus('正在检查 GitHub Releases…');
   try {
     const response = await fetch(GITHUB_LATEST_RELEASE, {
-      headers: { Accept: 'application/vnd.github+json' },
-      cache: 'no-store'
+      headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store'
     });
-    if (response.status === 404) {
-      setStatus('仓库还没有正式 Release');
-      return;
-    }
     if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
-
     const release = await response.json();
-    const installed = currentVersion();
     const latest = release.tag_name || release.name || '0.0.0';
-    document.querySelector('#installed-version').textContent = `当前 ${installed}`;
-
-    if (compareVersions(latest, installed) <= 0) {
+    document.querySelector('#installed-version').textContent = `当前 ${APP_VERSION}`;
+    if (compareVersions(latest, APP_VERSION) <= 0) {
+      availableRelease = null;
       setStatus(`已是最新版本 · ${latest}`, 'ok');
-      if (download) download.hidden = true;
+      install.hidden = true;
       return;
     }
-
     const asset = platformAsset(release.assets);
+    const checksum = release.assets?.find(item => /SHA256SUMS\.txt$/i.test(item.name)) || null;
+    availableRelease = { release, latest, asset, checksum };
     setStatus(`发现新版本 ${latest}`, 'available');
-    if (download) {
-      download.hidden = false;
-      download.href = asset?.browser_download_url || release.html_url;
-      download.textContent = asset ? `下载 ${asset.name}` : '打开 Release 下载页';
-    }
-  } catch (error) {
-    setStatus(`检查失败：${error.message}`, 'error');
-  } finally {
-    if (button) button.disabled = false;
+    install.hidden = false;
+    const canAutoInstall = isWindows && invoke && asset && checksum;
+    install.textContent = canAutoInstall ? `下载、安装并重启 ${latest}` : '打开 Release 下载';
+    install.dataset.mode = canAutoInstall ? 'install' : 'manual';
+  } catch (error) { setStatus(`检查失败：${error.message}`, 'error'); }
+  finally {
+    setBusy(false);
     localStorage.setItem('token-on-kindle:last-update-check', String(Date.now()));
+  }
+}
+
+async function installAvailableUpdate() {
+  if (!availableRelease) return;
+  const { release, latest, asset, checksum } = availableRelease;
+  if (!isWindows || !invoke || !asset || !checksum) {
+    window.open(release.html_url, '_blank', 'noopener,noreferrer');
+    setStatus('已打开 Release 页面，请下载对应平台版本。', 'available');
+    return;
+  }
+  setBusy(true);
+  setStatus(`正在下载 ${latest} 并校验 SHA-256…`, 'available');
+  try {
+    await invoke('install_update', {
+      request: {
+        version: latest,
+        downloadUrl: asset.browser_download_url,
+        checksumUrl: checksum.browser_download_url,
+        assetName: asset.name
+      }
+    });
+    setStatus('校验完成，应用正在退出、替换并自动重启…', 'available');
+  } catch (error) {
+    setBusy(false);
+    setStatus(`自动更新失败：${error}`, 'error');
   }
 }
 
@@ -85,14 +106,7 @@ function shouldAutoCheck() {
   return Date.now() - last > CHECK_INTERVAL_MS;
 }
 
-const button = document.querySelector('#check-update');
-button?.addEventListener('click', () => checkForUpdates({ manual: true }));
-
-document.querySelector('#download-update')?.addEventListener('click', () => {
-  setStatus('下载后退出应用，解压并覆盖旧程序；登录状态会保留。', 'available');
-});
-
-const versionTarget = document.querySelector('#installed-version');
-if (versionTarget) versionTarget.textContent = `当前 ${currentVersion()}`;
-
+document.querySelector('#check-update')?.addEventListener('click', () => checkForUpdates({ manual: true }));
+document.querySelector('#install-update')?.addEventListener('click', installAvailableUpdate);
+document.querySelector('#installed-version').textContent = `当前 ${APP_VERSION}`;
 if (shouldAutoCheck()) setTimeout(() => checkForUpdates(), 2500);
