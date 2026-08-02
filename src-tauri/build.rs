@@ -65,7 +65,11 @@ fn generate_extractor() {
         "function parseDeepSeekSummaryText",
     );
 
-    let original_base = fs::read_to_string(&base_path).expect("read extractor base");
+    // Git for Windows may check text files out with CRLF. Normalize before the
+    // guarded replacement so the same source builds identically on all runners.
+    let original_base = fs::read_to_string(&base_path)
+        .expect("read extractor base")
+        .replace("\r\n", "\n");
     let old_summary_reads = r#"    const balance = cardMetric(['balance', '余额'], money);
     const rangeCost = cardMetric(['cost', '费用', '消耗'], money);
     const rangeTokens = cardMetric(['tokens', 'token'], numeric);
