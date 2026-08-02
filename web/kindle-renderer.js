@@ -49,10 +49,10 @@ export function selectCodexQuotas(codex = {}) {
   return { weekly, hourly };
 }
 
-export function deepSeekMonthlyMetrics(deepseek = {}) {
+export function deepSeekRangeMetrics(deepseek = {}) {
   return {
-    monthlyCost: numericValue(deepseek?.account?.monthlyCost),
-    monthlyTokens: numericValue(deepseek?.account?.monthlyTokens)
+    rangeCost: numericValue(deepseek?.range?.cost),
+    rangeTokens: numericValue(deepseek?.range?.tokens)
   };
 }
 
@@ -222,14 +222,14 @@ function drawCodex(ctx, codex) {
   drawQuotaColumn(ctx, weekly || hourly, 28, 544, weekly ? '周额度' : '小时额度');
 }
 
-function drawDeepSeekSummary(ctx, deepseek, dailyMode, cost, tokens) {
+function drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens) {
   drawText(ctx, 'DEEPSEEK', 28, 246, 15, 750);
   drawBox(ctx, 28, 268, 544, 116, PALETTE.paper, PALETTE.ink, 2);
 
   const topMetrics = [
     ['余额', formatMoney(deepseek.balance)],
-    [dailyMode ? '今日费用' : '范围费用', formatMoney(cost)],
-    [dailyMode ? '今日 Token' : '范围 Token', formatTokens(tokens)]
+    ['今日费用', formatMoney(todayCost)],
+    ['今日 Token', formatTokens(todayTokens)]
   ];
 
   topMetrics.forEach(([label, value], index) => {
@@ -241,10 +241,10 @@ function drawDeepSeekSummary(ctx, deepseek, dailyMode, cost, tokens) {
   });
 
   drawLine(ctx, 28, 334, 572, 334, 2, PALETTE.dark);
-  const monthly = deepSeekMonthlyMetrics(deepseek);
+  const range = deepSeekRangeMetrics(deepseek);
   const bottomMetrics = [
-    ['本月费用', formatMoney(monthly.monthlyCost)],
-    ['本月 Token', formatTokens(monthly.monthlyTokens)]
+    ['筛选范围费用', formatMoney(range.rangeCost)],
+    ['筛选范围 Token', formatTokens(range.rangeTokens)]
   ];
   bottomMetrics.forEach(([label, value], index) => {
     const left = 28 + index * 272;
@@ -342,10 +342,8 @@ export function renderKindleDashboard(ctx, state) {
   const todayTokens = numericValue(deepseek.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
   const todayCost = numericValue(deepseek.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
   const dailyMode = [todayTokens, todayCost, flash.tokens, pro.tokens, flash.cost, pro.cost].some(value => value != null);
-  const shownCost = dailyMode ? todayCost : numericValue(deepseek.range?.cost);
-  const shownTokens = dailyMode ? todayTokens : numericValue(deepseek.range?.tokens);
 
-  drawDeepSeekSummary(ctx, deepseek, dailyMode, shownCost, shownTokens);
+  drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens);
   if (dailyMode) {
     drawModel(ctx, 28, 'V4 FLASH', flash, false);
     drawModel(ctx, 308, 'V4 PRO', pro, true);
