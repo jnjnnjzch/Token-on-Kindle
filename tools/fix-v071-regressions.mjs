@@ -92,7 +92,7 @@ if (!extractor.includes('function activateVolcengineUsageTab()')) {
 
   function collectVolcengine() {
     activateVolcengineUsageTab();
-    const quotas = [
+    const windows = [
       collectVolcengineQuota('近5小时用量', '5h'),
       collectVolcengineQuota('近一周用量', 'weekly'),
       collectVolcengineQuota('近一月用量', 'monthly')
@@ -104,11 +104,11 @@ if (!extractor.includes('function activateVolcengineUsageTab()')) {
       updateIntervalMinutes: 10,
       unit: 'AFP',
       plan: pageLines().find(line => /套餐$/.test(line)) || null,
-      quotas,
+      windows,
       url: location.href,
       diagnostics: {
-        primarySource: quotas.length ? 'semantic-dom-and-text' : 'waiting-for-usage-tab',
-        quotaCount: quotas.length,
+        primarySource: windows.length ? 'semantic-dom-and-text' : 'waiting-for-usage-tab',
+        windowCount: windows.length,
         usageTabVisible: /近5小时用量|近一周用量|近一月用量/.test(bodyText)
       }
     };
@@ -116,7 +116,7 @@ if (!extractor.includes('function activateVolcengineUsageTab()')) {
 `;
   extractor = replacePattern(
     extractor,
-    /  function closestUsageItem[\s\S]*?\n  let collecting = false;/,
+    /  function (?:closestUsageItem|volcAmount)[\s\S]*?\n  let collecting = false;/,
     `${collector}\n  let collecting = false;`,
     'Volcengine collector'
   );
@@ -166,7 +166,7 @@ let renderer = read('web/kindle-renderer.js');
 if (!renderer.includes('export function codexQuotaLayout')) {
   renderer = replacePattern(
     renderer,
-    /(export function selectCodexQuotas[\s\S]*?\n\})\n\nexport function deepSeekMonthlyMetrics/,
+    /(export function selectCodexQuotas[\s\S]*?\n\})\n+export function deepSeekMonthlyMetrics/,
     `$1\n\nexport function codexQuotaLayout(codex = {}) {
   const { weekly, hourly } = selectCodexQuotas(codex);
   const entries = [
@@ -181,38 +181,33 @@ if (!renderer.includes('export function codexQuotaLayout')) {
 }
 renderer = replacePattern(
   renderer,
-  /function drawCodexCard[\s\S]*?\n\}\n\nfunction drawDeepSeekSummary/,
-  `function drawCodexCard(ctx, codex, y) {
-  const height = 112;
-  drawBox(ctx, 28, y, 544, height, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, 'CODEX', 42, y + 9, 14, 800);
+  /function drawCodex\(ctx, codex, y\) \{[\s\S]*?\n\}\n\nfunction drawVolcengine/,
+  `function drawCodex(ctx, codex, y) {
+  drawText(ctx, 'CODEX', 28, y, 14, 800);
+  drawBox(ctx, 28, y + 21, 544, 95, PALETTE.white, PALETTE.ink, 2);
   const { entries, columns } = codexQuotaLayout(codex);
-  const contentWidth = columns === 1 ? 516 : 230;
-  const step = columns === 1 ? 0 : 258;
-  entries.forEach(([quota, fallback], index) => {
+  const contentWidth = columns === 1 ? 516 : 244;
+  const step = columns === 1 ? 0 : 266;
+  entries.forEach(([quota, label], index) => {
     const x = 42 + index * step;
-    if (columns > 1 && index) drawLine(ctx, 300, y + 14, 300, y + height - 12, 1.5, PALETTE.dark);
-    drawText(ctx, quotaLabel(quota, fallback), x, y + 31, 12, 700, 'left', PALETTE.dark);
-    if (!quota) {
-      drawText(ctx, '未同步', x, y + 51, 24, 800);
-      return;
-    }
+    if (columns > 1 && index) drawLine(ctx, 300, y + 31, 300, y + 106, 1.5, PALETTE.dark);
     const remaining = quotaRemaining(quota);
-    drawText(ctx, formatPercent(remaining), x + contentWidth, y + 26, 27, 850, 'right');
+    drawText(ctx, label, x, y + 31, 12, 700, 'left', PALETTE.dark);
+    drawText(ctx, quota ? formatPercent(remaining) : '未同步', x + contentWidth, y + 27, 24, 850, 'right');
     drawBar(ctx, x, y + 61, contentWidth, 11, remaining == null ? 0 : remaining / 100);
     drawText(
       ctx,
-      quota.resetText ? shorten(quota.resetText, columns === 1 ? 55 : 29) : '重置时间未知',
+      quota?.resetText ? '重置 ' + shorten(quota.resetText, columns === 1 ? 55 : 25) : '打开页面完成同步',
       x,
-      y + 80,
+      y + 79,
       10,
       600,
       'left',
       PALETTE.dark
     );
   });
-  return height;
-}\n\nfunction drawDeepSeekSummary`,
+  return y + 126;
+}\n\nfunction drawVolcengine`,
   'Codex adaptive card'
 );
 write('web/kindle-renderer.js', renderer);
