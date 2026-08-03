@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { createHash, gunzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 
 const payloads = [
   'tools/apply-v070.payload00',
