@@ -1,0 +1,49 @@
+name: Apply v0.7.0 source update
+
+on:
+  push:
+    branches: [agent/volcengine-display-controls]
+    paths:
+      - 'tools/apply-v070.part*'
+      - '.github/workflows/apply-v070.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    name: Apply generated source update
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/volcengine-display-controls
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reconstruct and apply v0.7.0 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            tools/apply-v070.part00 \
+            tools/apply-v070.part01 \
+            tools/apply-v070.part02 \
+            tools/apply-v070.part03a \
+            tools/apply-v070.part03b \
+            tools/apply-v070.part03c \
+            tools/apply-v070.part03d \
+            | base64 --decode | gzip --decompress > tools/apply-v070.mjs
+          node tools/apply-v070.mjs
+          npm test
+      - name: Commit final source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm tools/apply-v070.mjs tools/apply-v070.part*
+          rm .github/workflows/apply-v070.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'v0.7.0: add Volcengine AFP and display controls'
+          git push origin HEAD:agent/volcengine-display-controls
