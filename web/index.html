@@ -1,31 +1,107 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Token on Kindle</title>
-  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="update.css"><link rel="stylesheet" href="desktop.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="update.css">
+  <link rel="stylesheet" href="desktop.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div class="brand"><div class="brand-mark" aria-hidden="true"><span></span></div><div><h1>Token on Kindle</h1><p>Codex 与 DeepSeek 的电子墨水用量看板</p></div></div>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span></div>
+        <div><h1>Token on Kindle</h1><p>Codex、DeepSeek 与火山方舟企业版 AFP 的电子墨水看板</p></div>
+      </div>
       <div id="service" class="service-pill">正在启动后台服务…</div>
     </header>
+
     <section class="source-strip" aria-label="数据源状态与控制">
-      <button id="open-codex" class="source-card" data-state="idle"><span class="source-monogram">C</span><span class="source-copy"><span class="button-kicker">CODEX</span><strong id="codex-connection">需要登录</strong><small id="codex-detail">点击打开登录页面</small></span><span class="source-action">打开</span></button>
-      <button id="open-deepseek" class="source-card" data-state="idle"><span class="source-monogram">D</span><span class="source-copy"><span class="button-kicker">DEEPSEEK</span><strong id="deepseek-connection">需要登录</strong><small id="deepseek-detail">点击打开登录页面</small></span><span class="source-action">打开</span></button>
-      <button id="refresh" class="refresh-button"><span>立即刷新</span><small>重新加载两个数据源</small></button>
+      <button id="open-codex" class="source-card" data-state="idle">
+        <span class="source-monogram">C</span>
+        <span class="source-copy"><span class="button-kicker">CODEX</span><strong id="codex-connection">需要登录或导航</strong><small id="codex-detail">打开页面后点击同步至 Kindle</small></span>
+        <span class="source-action">打开</span>
+      </button>
+      <button id="open-deepseek" class="source-card" data-state="idle">
+        <span class="source-monogram">D</span>
+        <span class="source-copy"><span class="button-kicker">DEEPSEEK</span><strong id="deepseek-connection">需要登录或导航</strong><small id="deepseek-detail">打开页面后点击同步至 Kindle</small></span>
+        <span class="source-action">打开</span>
+      </button>
+      <button id="open-volcengine" class="source-card" data-state="idle">
+        <span class="source-monogram">V</span>
+        <span class="source-copy"><span class="button-kicker">VOLCENGINE</span><strong id="volcengine-connection">需要登录或导航</strong><small id="volcengine-detail">进入企业版用量统计后点击同步</small></span>
+        <span class="source-action">打开</span>
+      </button>
+      <button id="refresh" class="refresh-button"><span>立即刷新</span><small>保留火山企业版当前视图</small></button>
     </section>
+
     <section class="workspace">
-      <article class="panel preview-panel"><div class="panel-heading"><div><span class="eyebrow">KINDLE PREVIEW</span><h2>锁屏预览</h2></div><div id="format-note" class="format-note">600 × 800 · 8 位灰度 PNG</div></div><div class="preview-stage"><div class="kindle-frame"><canvas id="dashboard" width="600" height="800"></canvas></div></div></article>
+      <article class="panel preview-panel">
+        <div class="panel-heading">
+          <div><span class="eyebrow">KINDLE PREVIEW</span><h2>锁屏预览</h2></div>
+          <div id="format-note" class="format-note">600 × 800 · 8 位灰度 PNG</div>
+        </div>
+        <div class="preview-stage"><div class="kindle-frame"><canvas id="dashboard" width="600" height="800"></canvas></div></div>
+      </article>
+
       <aside class="control-column">
-        <section class="panel connection-panel"><div class="section-title"><div><span class="eyebrow">KINDLE CONNECTION</span><h2>局域网访问</h2></div><span class="section-badge">同一张 PNG</span></div><label class="field-label">Kindle 浏览器地址</label><div class="url-row"><div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div><button id="copy-browser" class="icon-button">复制</button></div><p class="help-text">未越狱 Kindle 直接打开。HTTP 页面与锁屏预览使用完全相同的图片。</p><details class="secondary-endpoint"><summary>屏保插件图片地址</summary><div class="url-row compact-row"><div class="url-box"><code id="url">正在读取图片地址…</code></div><button id="copy" class="icon-button">复制</button></div></details></section>
-        <section class="panel settings-panel"><div class="section-title"><div><span class="eyebrow">OUTPUT & SYNC</span><h2>输出与同步</h2></div></div><div class="settings-grid"><div class="setting-block"><label class="field-label" for="kindle-profile">Kindle 屏幕型号</label><select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select><p id="profile-description" class="field-note">Kindle 经典机型</p></div><div class="setting-block"><label class="field-label" for="refresh-minutes">后台刷新间隔</label><div class="interval-control"><input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" value="10"><button id="save-refresh" class="save-button">保存</button></div><p id="refresh-value" class="field-note">每 10 分钟刷新</p></div></div></section>
-        <section id="desktop-integration" class="panel desktop-panel" hidden><div class="section-title"><div><span class="eyebrow">DESKTOP INTEGRATION</span><h2>任务栏与后台</h2></div><span class="section-badge">桌面端</span></div><div class="desktop-state"><span class="desktop-indicator" aria-hidden="true"></span><span class="desktop-state-copy"><strong id="tray-state">正在读取系统托盘…</strong><small id="tray-detail">关闭窗口后的行为将在这里显示</small></span></div><div class="desktop-actions"><button id="toggle-collection" class="desktop-action">暂停后台采集</button><button id="toggle-autostart" class="desktop-action">启用开机启动</button><button id="open-system-browser" class="desktop-action">打开 Kindle 页面</button><button id="copy-kindle-url" class="desktop-action">复制 Kindle 地址</button></div><p class="help-text">左键单击托盘图标可显示或隐藏看板；Windows 双击会直接显示。macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。</p></section><section class="panel app-update-panel"><div class="section-title"><div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div><span id="installed-version" class="format-note">读取版本中…</span></div><p id="update-status" class="update-status">启动后自动检查 GitHub Releases</p><div class="update-actions"><button id="check-update" class="secondary-action">检查更新</button><button id="install-update" class="install-button" hidden>下载、安装并重启</button></div><p class="help-text">Windows 便携版会校验 SHA-256，退出后替换当前 EXE 并自动重启；应用数据和登录状态不会删除。</p></section>
-        <details class="panel debug-panel"><summary><span>采集详情</span><small>仅保留排查所需字段</small></summary><div class="status-grid"><article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article><article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article></div></details>
+        <section class="panel connection-panel">
+          <div class="section-title"><div><span class="eyebrow">KINDLE CONNECTION</span><h2>局域网访问</h2></div><span class="section-badge">同一张 PNG</span></div>
+          <label class="field-label">Kindle 浏览器地址</label>
+          <div class="url-row"><div class="url-box"><code id="browser-url">正在读取局域网地址…</code></div><button id="copy-browser" class="icon-button">复制</button></div>
+          <p class="help-text">未越狱 Kindle 直接打开。HTTP 页面与锁屏预览使用完全相同的图片。</p>
+          <details class="secondary-endpoint"><summary>屏保插件图片地址</summary><div class="url-row compact-row"><div class="url-box"><code id="url">正在读取图片地址…</code></div><button id="copy" class="icon-button">复制</button></div></details>
+        </section>
+
+        <section class="panel settings-panel">
+          <div class="section-title"><div><span class="eyebrow">OUTPUT & SYNC</span><h2>输出与同步</h2></div></div>
+          <div class="source-selection" aria-label="Kindle 看板统计来源">
+            <label class="source-toggle"><input id="display-codex" type="checkbox"><span><strong>Codex</strong><small>额度与重置时间</small></span></label>
+            <label class="source-toggle"><input id="display-deepseek" type="checkbox"><span><strong>DeepSeek</strong><small>金额、Token 与模型明细</small></span></label>
+            <label class="source-toggle"><input id="display-volcengine" type="checkbox"><span><strong>火山方舟</strong><small>Agent Plan 企业版 AFP</small></span></label>
+          </div>
+          <p class="help-text selection-note">这里只选择统计来源。Flash / Pro 仍作为 DeepSeek 内部明细显示，不再单独占用来源开关。</p>
+          <div class="settings-grid">
+            <div class="setting-block"><label class="field-label" for="kindle-profile">Kindle 屏幕型号</label><select id="kindle-profile" class="profile-select" aria-describedby="profile-description"></select><p id="profile-description" class="field-note">Kindle 经典机型</p></div>
+            <div class="setting-block"><label class="field-label" for="refresh-minutes">后台刷新间隔</label><div class="interval-control"><input id="refresh-minutes" class="interval-input" type="number" min="1" max="1440" step="1" value="10"><button id="save-refresh" class="save-button">保存</button></div><p id="refresh-value" class="field-note">每 10 分钟刷新</p></div>
+          </div>
+        </section>
+
+        <section class="panel enterprise-help">
+          <div class="section-title"><div><span class="eyebrow">AGENT PLAN ENTERPRISE</span><h2>企业版火山方舟抓取</h2></div><span class="section-badge">手动确认</span></div>
+          <ol>
+            <li>点击上方“火山方舟”打开企业版 Agent Plan。</li>
+            <li>按企业账号实际页面进入对应套餐，再进入“用量统计”。</li>
+            <li>确认页面出现“近5小时用量 / 近一周用量 / 近一月用量”。</li>
+            <li>点击页面右下角“同步至 Kindle”。此后后台刷新会在当前视图继续抓取，不会自动跳回入口页。</li>
+          </ol>
+        </section>
+
+        <section id="desktop-integration" class="panel desktop-panel" hidden>
+          <div class="section-title"><div><span class="eyebrow">DESKTOP INTEGRATION</span><h2>任务栏与后台</h2></div><span class="section-badge">桌面端</span></div>
+          <div class="desktop-state"><span class="desktop-indicator" aria-hidden="true"></span><span class="desktop-state-copy"><strong id="tray-state">正在读取系统托盘…</strong><small id="tray-detail">关闭窗口后的行为将在这里显示</small></span></div>
+          <div class="desktop-actions"><button id="toggle-collection" class="desktop-action">暂停后台采集</button><button id="toggle-autostart" class="desktop-action">启用开机启动</button><button id="open-system-browser" class="desktop-action">打开 Kindle 页面</button><button id="copy-kindle-url" class="desktop-action">复制 Kindle 地址</button></div>
+          <p class="help-text">左键单击托盘图标可显示或隐藏看板；Windows 双击会直接显示。macOS 使用菜单栏模式，Linux 托盘不可用时关闭主窗口会正常退出。</p>
+        </section>
+
+        <section class="panel app-update-panel">
+          <div class="section-title"><div><span class="eyebrow">APP UPDATE</span><h2>应用更新</h2></div><span id="installed-version" class="format-note">读取版本中…</span></div>
+          <p id="update-status" class="update-status">启动后自动检查 GitHub Releases</p>
+          <div class="update-actions"><button id="check-update" class="secondary-action">检查更新</button><button id="install-update" class="install-button" hidden>下载、安装并重启</button></div>
+          <p class="help-text">Windows 便携版会校验 SHA-256，退出后替换当前 EXE 并自动重启；应用数据和登录状态不会删除。</p>
+        </section>
+
+        <details class="panel debug-panel">
+          <summary><span>采集详情</span><small>仅保留排查所需字段</small></summary>
+          <div class="status-grid"><article><h3>Codex</h3><pre id="codex-status">尚未采集</pre></article><article><h3>DeepSeek</h3><pre id="deepseek-status">尚未采集</pre></article><article><h3>火山方舟</h3><pre id="volcengine-status">尚未采集</pre></article></div>
+        </details>
       </aside>
     </section>
   </main>
-  <script type="module" src="app.js"></script><script type="module" src="update.js"></script><script type="module" src="desktop.js"></script>
+  <script type="module" src="app.js"></script>
+  <script type="module" src="update.js"></script>
+  <script type="module" src="desktop.js"></script>
 </body>
 </html>

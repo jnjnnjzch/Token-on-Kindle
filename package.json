@@ -1,16 +1,15 @@
 {
   "name": "token-on-kindle",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
-  "description": "Cross-platform Tauri app that turns Codex, DeepSeek and Volcengine Ark usage into a Kindle dashboard.",
+  "description": "Cross-platform Tauri app that turns Codex, DeepSeek and Volcengine Agent Plan Enterprise usage into a Kindle dashboard.",
   "scripts": {
-    "generate:v070": "node tools/normalize-v070-inputs.mjs && node tools/apply-v070.mjs && node tools/fix-v070-app.mjs && node tools/prepare-v071-regression-shape.mjs && node tools/fix-v071-regressions.mjs",
-    "test": "node tools/normalize-v070-inputs.mjs && node tools/apply-v070.mjs && node tools/fix-v070-app.mjs && node tools/prepare-v071-regression-shape.mjs && node tools/fix-v071-regressions.mjs && node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor.js && node --check web/extractor-base.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/deepseek-summary-parser.mjs && node --check shared/deepseek-platform-parser.mjs && node --check shared/volcengine-text-parser.mjs && node --check web/update.js && node --check tools/sync-version.mjs && node --check web/desktop.js && node --check tools/normalize-v070-inputs.mjs && node --check tools/apply-v070.mjs && node --check tools/fix-v070-app.mjs && node --check tools/prepare-v071-regression-shape.mjs && node --check tools/fix-v071-regressions.mjs",
+    "test": "node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check web/diagnostics.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/deepseek-summary-parser.mjs && node --check shared/deepseek-platform-parser.mjs && node --check web/update.js && node --check tools/sync-version.mjs && node --check web/desktop.js",
     "smoke": "node tools/smoke-server.mjs",
     "tauri": "tauri",
-    "dev": "node tools/normalize-v070-inputs.mjs && node tools/apply-v070.mjs && node tools/fix-v070-app.mjs && node tools/prepare-v071-regression-shape.mjs && node tools/fix-v071-regressions.mjs && tauri dev",
-    "build": "node tools/normalize-v070-inputs.mjs && node tools/apply-v070.mjs && node tools/fix-v070-app.mjs && node tools/prepare-v071-regression-shape.mjs && node tools/fix-v071-regressions.mjs && tauri build"
+    "dev": "tauri dev",
+    "build": "tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"

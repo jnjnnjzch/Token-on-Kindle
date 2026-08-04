@@ -31,6 +31,7 @@ use desktop::{
 const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
 const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";
 const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
+const VOLCENGINE_URL: &str = "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";
 const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
 const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
 const DEFAULT_REFRESH_MINUTES: u64 = 10;
@@ -42,6 +43,7 @@ const MAX_REFRESH_MINUTES: u64 = 24 * 60;
 struct MetricsState {
     codex: Option<Value>,
     deepseek: Option<Value>,
+    volcengine: Option<Value>,
     received_at: Option<String>,
 }
 
@@ -224,6 +226,7 @@ fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str)
     match source {
         "codex" => Ok(("codex-login", "Codex Analytics", CODEX_URL)),
         "deepseek" => Ok(("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL)),
+        "volcengine" => Ok(("volcengine-login", "火山方舟 Agent Plan 企业版", VOLCENGINE_URL)),
         _ => Err("未知数据源".into()),
     }
 }
@@ -233,6 +236,7 @@ fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
     let (label, title, url) = match source {
         "codex" => ("codex-login", "Codex Analytics", CODEX_URL),
         "deepseek" => ("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL),
+        "volcengine" => ("volcengine-login", "火山方舟 Agent Plan 企业版", VOLCENGINE_URL),
         _ => unreachable!("only static sources are created"),
     };
     let parsed = url.parse().expect("static source URL must be valid");
@@ -281,6 +285,12 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             refreshed += 1;
         }
+    }
+    if let Some(window) = app.get_webview_window("volcengine-login") {
+        window
+            .eval("window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })")
+            .map_err(|error| error.to_string())?;
+        refreshed += 1;
     }
     if refreshed == 0 {
         return Err("没有可刷新的后台窗口".into());
@@ -562,6 +572,7 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
         match source {
             "codex" => metrics.codex = Some(payload),
             "deepseek" => metrics.deepseek = Some(payload),
+            "volcengine" => metrics.volcengine = Some(payload),
             _ => return,
         }
         metrics.received_at = Some(timestamp());
@@ -583,7 +594,12 @@ fn handle_title_signal(window: &WebviewWindow, title: &str) {
                         let _ = window.navigate(url);
                     }
                 }
-                "deepseek" => return_to_dashboard(window),
+                "deepseek" => {
+                    if let Ok(url) = VOLCENGINE_URL.parse() {
+                        let _ = window.navigate(url);
+                    }
+                }
+                "volcengine" => return_to_dashboard(window),
                 _ => {}
             }
         }
@@ -628,7 +644,7 @@ img{{display:block;width:100%;height:auto;margin:0 auto;border:0;background:#fff
 <body>
 <main>
 <a href="/" aria-label="点击立即刷新">
-<img src="/dashboard.png?v={nonce}" alt="Codex 与 DeepSeek 用量看板">
+<img src="/dashboard.png?v={nonce}" alt="Codex、DeepSeek 与火山方舟用量看板">
 </a>
 <noscript><p class="notice">页面每 {refresh_minutes} 分钟自动重新载入；点击图片可立即刷新。</p></noscript>
 </main>
@@ -783,6 +799,7 @@ pub fn run() {
             {
                 create_source_window(app, "codex")?;
                 create_source_window(app, "deepseek")?;
+                create_source_window(app, "volcengine")?;
             }
 
             start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));

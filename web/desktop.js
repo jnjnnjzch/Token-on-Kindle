@@ -41,7 +41,8 @@ async function pushTrayStatus() {
   await Promise.allSettled([
     invoke('set_tray_source_status', {
       codex: connectionText('codex'),
-      deepseek: connectionText('deepseek')
+      deepseek: connectionText('deepseek'),
+      volcengine: connectionText('volcengine')
     }),
     invoke('set_tray_update_status', {
       status: text('#update-status'),

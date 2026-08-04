@@ -1,6 +1,6 @@
 # Token on Kindle
 
-一个轻量的 Tauri 2 应用：在独立系统 WebView 中登录 Codex Analytics 与 DeepSeek Platform，采集额度和用量，生成适合 Kindle 电子墨水屏的 8 位灰度 PNG，并在局域网提供同一张图片的浏览器页面和屏保地址。
+一个轻量的 Tauri 2 应用：在独立系统 WebView 中登录 Codex、DeepSeek 与火山方舟 Agent Plan 企业版 AFP 的 Kindle 用量看板。
 
 ## v0.6.2
 

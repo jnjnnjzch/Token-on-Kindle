@@ -11,9 +11,13 @@ const PALETTE = {
 export const KINDLE_LAYOUT = Object.freeze({
   width: 600,
   height: 800,
+  contentTop: 82,
+  contentBottom: 666,
   unlockTop: 716,
   unlockHeight: 84
 });
+
+export const SOURCE_ORDER = Object.freeze(['codex', 'deepseek', 'volcengine']);
 
 const numericValue = value => {
   if (value == null) return null;
@@ -65,6 +69,25 @@ export function deepSeekRangeMetrics(deepseek = {}) {
   };
 }
 
+export function resolveDisplaySources(displaySources = {}) {
+  const selected = SOURCE_ORDER.filter(id => displaySources[id] !== false);
+  return selected.length ? selected : ['codex'];
+}
+
+export function sourceLayoutBoxes(displaySources = {}) {
+  const sources = resolveDisplaySources(displaySources);
+  const gap = 12;
+  const totalHeight = KINDLE_LAYOUT.contentBottom - KINDLE_LAYOUT.contentTop;
+  const height = (totalHeight - gap * (sources.length - 1)) / sources.length;
+  return sources.map((source, index) => ({
+    source,
+    x: 28,
+    y: KINDLE_LAYOUT.contentTop + index * (height + gap),
+    width: 544,
+    height
+  }));
+}
+
 const formatTokens = value => {
   const number = numericValue(value);
   if (number == null) return '—';
@@ -79,9 +102,11 @@ const formatMoney = value => {
   return number == null ? '—' : `¥${number.toFixed(2)}`;
 };
 
-const formatInteger = value => {
+const formatNumber = value => {
   const number = numericValue(value);
-  return number == null ? '—' : Math.round(number).toLocaleString();
+  if (number == null) return '—';
+  if (Math.abs(number) >= 10000) return `${(number / 10000).toFixed(number >= 100000 ? 0 : 1)}万`;
+  return number.toLocaleString(undefined, { maximumFractionDigits: 2 });
 };
 
 const formatPercent = value => {
@@ -141,21 +166,14 @@ function drawBar(ctx, x, y, width, height, ratio, fill = PALETTE.ink) {
     ctx.fillRect(x, y, filled, height);
   }
   ctx.strokeStyle = PALETTE.ink;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.strokeRect(x, y, width, height);
 }
 
-function modelMetrics(deepseek, key) {
-  const source = deepseek?.models?.[key] || {};
-  const breakdown = modelTokenBreakdown(source);
-  const hit = breakdown.cacheHitTokens;
-  const miss = breakdown.cacheMissTokens;
-  return {
-    tokens: numericValue(source.tokens),
-    cost: numericValue(source.cost),
-    ...breakdown,
-    cacheRate: numericValue(source.cacheRate) ?? (hit != null && miss != null && hit + miss > 0 ? hit / (hit + miss) * 100 : null)
-  };
+function drawCardTitle(ctx, title, box, subtitle = '') {
+  drawText(ctx, title, box.x + 14, box.y + 10, 14, 800);
+  if (subtitle) drawText(ctx, subtitle, box.x + box.width - 14, box.y + 12, 10, 650, 'right', PALETTE.dark);
+  drawLine(ctx, box.x + 12, box.y + 34, box.x + box.width - 12, box.y + 34, 1.5, PALETTE.dark);
 }
 
 function quotaRemaining(quota) {
@@ -175,192 +193,179 @@ function quotaLabel(quota, fallback) {
   return fallback;
 }
 
-function drawHeader(ctx) {
-  drawText(ctx, 'AI 用量', 28, 18, 34, 800);
-  drawText(ctx, 'Codex · DeepSeek', 572, 30, 14, 650, 'right', PALETTE.dark);
-  drawLine(ctx, 28, 68, 572, 68, 3);
-}
-
-function drawQuotaColumn(ctx, quota, x, width, fallbackLabel) {
-  const innerLeft = x + 14;
-  const innerRight = x + width - 14;
-  drawText(ctx, quotaLabel(quota, fallbackLabel), innerLeft, 116, 14, 750, 'left', PALETTE.dark);
-
+function drawQuota(ctx, quota, x, y, width, height, fallbackLabel) {
+  const compact = height < 118;
+  const remaining = quotaRemaining(quota);
+  const used = numericValue(quota?.usedPercent) ?? (remaining == null ? null : 100 - remaining);
+  drawText(ctx, quotaLabel(quota, fallbackLabel), x + 12, y + 8, compact ? 11 : 13, 750, 'left', PALETTE.dark);
   if (!quota) {
-    drawText(ctx, '未提供', innerLeft, 145, 26, 800);
-    drawText(ctx, '登录后自动识别', innerLeft, 199, 12, 600, 'left', PALETTE.mid);
+    drawText(ctx, '未提供', x + width - 12, y + 7, compact ? 18 : 24, 800, 'right');
+    drawText(ctx, '登录后自动识别', x + 12, y + height - 22, 10, 600, 'left', PALETTE.mid);
     return;
   }
-
-  const remaining = quotaRemaining(quota);
-  const used = numericValue(quota.usedPercent) ?? (remaining == null ? null : 100 - remaining);
-  drawText(ctx, '剩余', innerLeft, 137, 13, 700, 'left', PALETTE.dark);
-  drawText(ctx, formatPercent(remaining), innerRight, 128, 36, 850, 'right');
-  drawBar(ctx, innerLeft, 178, width - 28, 14, remaining == null ? 0 : remaining / 100);
-  drawText(ctx, used == null ? '已用 —' : `已用 ${Math.round(used)}%`, innerLeft, 198, 11, 600, 'left', PALETTE.dark);
-  drawText(
-    ctx,
-    quota.resetText ? `重置 ${shorten(quota.resetText, width > 300 ? 38 : 22)}` : '重置时间未知',
-    innerLeft,
-    216,
-    11,
-    600,
-    'left',
-    PALETTE.dark
-  );
+  drawText(ctx, formatPercent(remaining), x + width - 12, y + 4, compact ? 24 : 32, 850, 'right');
+  const barY = y + (compact ? 42 : 50);
+  drawBar(ctx, x + 12, barY, width - 24, compact ? 10 : 13, remaining == null ? 0 : remaining / 100);
+  drawText(ctx, used == null ? '已用 —' : `已用 ${formatPercent(used)}`, x + 12, barY + 16, 10, 650, 'left', PALETTE.dark);
+  drawText(ctx, quota?.resetText ? shorten(quota.resetText, width > 300 ? 42 : 21) : '重置时间未知', x + width - 12, barY + 16, 10, 600, 'right', PALETTE.dark);
 }
 
-function drawCodex(ctx, codex) {
-  drawText(ctx, 'CODEX', 28, 82, 15, 750);
-  drawBox(ctx, 28, 104, 544, 132, PALETTE.white, PALETTE.ink, 2);
-
+function drawCodex(ctx, codex, box) {
+  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
+  drawCardTitle(ctx, 'CODEX', box, '额度');
   const { weekly, hourly } = selectCodexQuotas(codex);
   if (!weekly && !hourly) {
-    drawText(ctx, '尚未同步', 46, 132, 30, 800);
-    drawText(ctx, '打开 Codex Analytics 完成登录', 46, 184, 15, 550, 'left', PALETTE.dark);
+    drawText(ctx, '尚未同步', box.x + 18, box.y + 58, box.height > 240 ? 32 : 24, 850);
+    drawText(ctx, '打开 Codex Analytics，并点击“同步至 Kindle”', box.x + 18, box.y + 105, box.height > 240 ? 14 : 11, 600, 'left', PALETTE.dark);
     return;
   }
-
+  const bodyY = box.y + 40;
+  const bodyHeight = box.height - 48;
   if (weekly && hourly) {
-    drawLine(ctx, 300, 116, 300, 224, 2, PALETTE.dark);
-    drawQuotaColumn(ctx, weekly, 28, 272, '周额度');
-    drawQuotaColumn(ctx, hourly, 300, 272, '5 小时额度');
-    return;
+    const half = box.width / 2;
+    drawLine(ctx, box.x + half, bodyY + 4, box.x + half, box.y + box.height - 10, 1.5, PALETTE.dark);
+    drawQuota(ctx, weekly, box.x, bodyY, half, bodyHeight, '周额度');
+    drawQuota(ctx, hourly, box.x + half, bodyY, half, bodyHeight, '5 小时额度');
+  } else {
+    drawQuota(ctx, weekly || hourly, box.x, bodyY, box.width, bodyHeight, weekly ? '周额度' : '小时额度');
   }
-
-  drawQuotaColumn(ctx, weekly || hourly, 28, 544, weekly ? '周额度' : '小时额度');
 }
 
-function drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens) {
-  drawText(ctx, 'DEEPSEEK', 28, 246, 15, 750);
-  drawBox(ctx, 28, 268, 544, 116, PALETTE.paper, PALETTE.ink, 2);
+function modelMetrics(deepseek, key) {
+  const source = deepseek?.models?.[key] || {};
+  const breakdown = modelTokenBreakdown(source);
+  const hit = breakdown.cacheHitTokens;
+  const miss = breakdown.cacheMissTokens;
+  return {
+    tokens: numericValue(source.tokens),
+    cost: numericValue(source.cost),
+    ...breakdown,
+    cacheRate: numericValue(source.cacheRate) ?? (hit != null && miss != null && hit + miss > 0 ? hit / (hit + miss) * 100 : null)
+  };
+}
 
-  const topMetrics = [
+function drawMetricGrid(ctx, metrics, x, y, width, height, columns = 3) {
+  const rows = Math.ceil(metrics.length / columns);
+  const cellWidth = width / columns;
+  const cellHeight = height / rows;
+  metrics.forEach(([label, value], index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const left = x + column * cellWidth;
+    const top = y + row * cellHeight;
+    const center = left + cellWidth / 2;
+    if (column > 0) drawLine(ctx, left, top + 6, left, top + cellHeight - 6, 1, PALETTE.dark);
+    if (row > 0) drawLine(ctx, left + 6, top, left + cellWidth - 6, top, 1, PALETTE.dark);
+    drawText(ctx, label, center, top + 8, height < 140 ? 9 : 11, 650, 'center', PALETTE.dark);
+    drawText(ctx, value, center, top + (height < 140 ? 25 : 29), height < 140 ? 16 : 20, 820, 'center');
+  });
+}
+
+function drawDeepSeek(ctx, deepseek = {}, box) {
+  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.paper, PALETTE.ink, 2);
+  drawCardTitle(ctx, 'DEEPSEEK', box, '金额与 Token');
+  const flash = modelMetrics(deepseek, 'flash');
+  const pro = modelMetrics(deepseek, 'pro');
+  const monthly = deepSeekMonthlyMetrics(deepseek);
+  const todayTokens = numericValue(deepseek.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
+  const todayCost = numericValue(deepseek.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
+  const metrics = [
     ['余额', formatMoney(deepseek.balance)],
     ['今日费用', formatMoney(todayCost)],
-    ['今日 Token', formatTokens(todayTokens)]
-  ];
-
-  topMetrics.forEach(([label, value], index) => {
-    const left = 28 + index * (544 / 3);
-    const center = left + 544 / 6;
-    drawText(ctx, label, center, 278, 13, 650, 'center', PALETTE.dark);
-    drawText(ctx, value, center, 300, 24, 800, 'center');
-    if (index < 2) drawLine(ctx, left + 544 / 3, 278, left + 544 / 3, 326, 2, PALETTE.dark);
-  });
-
-  drawLine(ctx, 28, 334, 572, 334, 2, PALETTE.dark);
-  const monthly = deepSeekMonthlyMetrics(deepseek);
-  const bottomMetrics = [
+    ['今日 Token', formatTokens(todayTokens)],
     ['累计费用', formatMoney(monthly.cumulativeCost)],
     ['本月费用', formatMoney(monthly.monthlyCost)],
     ['本月 Token', formatTokens(monthly.monthlyTokens)]
   ];
-  bottomMetrics.forEach(([label, value], index) => {
-    const left = 28 + index * (544 / 3);
-    const center = left + 544 / 6;
-    drawText(ctx, label, center, 342, 12, 650, 'center', PALETTE.dark);
-    drawText(ctx, value, center, 359, 18, 800, 'center');
-    if (index < 2) drawLine(ctx, left + 544 / 3, 342, left + 544 / 3, 376, 2, PALETTE.dark);
-  });
-}
-
-function drawModel(ctx, x, title, model, gray = false) {
-  const y = 396;
-  drawBox(ctx, x, y, 264, 178, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, title, x + 14, y + 10, 15, 800);
-  drawText(ctx, formatMoney(model.cost), x + 248, y + 10, 18, 800, 'right');
-  drawText(ctx, formatTokens(model.tokens), x + 14, y + 38, 28, 850);
-  drawText(ctx, '总 TOKEN', x + 14, y + 72, 11, 650, 'left', PALETTE.dark);
-  drawLine(ctx, x + 14, y + 90, x + 250, y + 90, 2, PALETTE.dark);
-
-  const parts = [
-    ['未缓存', model.cacheMissTokens],
-    ['已缓存', model.cacheHitTokens],
-    ['输出', model.outputTokens]
-  ];
-  parts.forEach(([label, value], index) => {
-    const center = x + 14 + (index + 0.5) * (236 / 3);
-    drawText(ctx, label, center, y + 97, 10, 650, 'center', PALETTE.dark);
-    drawText(ctx, formatTokens(value), center, y + 114, 14, 800, 'center');
-  });
-
-  drawText(ctx, '缓存率', x + 14, y + 141, 11, 650, 'left', PALETTE.dark);
-  drawText(ctx, formatPercent(model.cacheRate), x + 250, y + 141, 11, 750, 'right', PALETTE.dark);
-  drawBar(ctx, x + 14, y + 160, 236, 10, cacheRateToRatio(model.cacheRate), gray ? PALETTE.dark : PALETTE.ink);
-}
-
-function drawMonthlyFallback(ctx, deepseek) {
-  const monthly = deepSeekMonthlyMetrics(deepseek);
-  const requests = monthly.monthlyRequests;
-  const tokens = monthly.monthlyTokens;
-  const average = requests && tokens != null ? tokens / requests : null;
-
-  drawBox(ctx, 28, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, '本月 API 请求', 42, 416, 15, 800);
-  drawText(ctx, formatInteger(requests), 42, 458, 34, 850);
-  drawText(ctx, '内部用量接口汇总', 42, 520, 13, 600, 'left', PALETTE.dark);
-
-  drawBox(ctx, 308, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
-  drawText(ctx, '平均 Token / 请求', 322, 416, 15, 800);
-  drawText(ctx, formatTokens(average), 322, 458, 34, 850);
-  drawText(ctx, '本月 Token ÷ 请求数', 322, 520, 13, 600, 'left', PALETTE.dark);
-}
-
-function drawCache(ctx, deepseek, flash, pro, dailyMode) {
-  drawBox(ctx, 28, 586, 544, 70, PALETTE.paper, PALETTE.ink, 2);
-
-  if (!dailyMode) {
-    drawText(ctx, '今日 Flash / Pro 明细正在同步', 44, 601, 19, 800);
-    drawText(ctx, '本月总览已显示', 556, 605, 13, 600, 'right', PALETTE.dark);
+  const bodyY = box.y + 38;
+  const bodyHeight = box.height - 44;
+  if (box.height < 245) {
+    drawMetricGrid(ctx, metrics, box.x + 8, bodyY, box.width - 16, bodyHeight, 3);
     return;
   }
-
-  let cacheRate = numericValue(deepseek.cacheRate);
-  if (cacheRate == null) {
-    const hit = (flash.cacheHitTokens || 0) + (pro.cacheHitTokens || 0);
-    const miss = (flash.cacheMissTokens || 0) + (pro.cacheMissTokens || 0);
-    cacheRate = hit + miss > 0 ? hit / (hit + miss) * 100 : null;
-  }
-  drawText(ctx, '总体缓存命中率', 44, 598, 15, 750);
-  drawText(ctx, formatPercent(cacheRate), 556, 594, 25, 850, 'right');
-  drawBar(ctx, 44, 624, 512, 16, cacheRateToRatio(cacheRate));
+  const summaryHeight = Math.min(150, bodyHeight * 0.57);
+  drawMetricGrid(ctx, metrics, box.x + 8, bodyY, box.width - 16, summaryHeight, 3);
+  const modelY = bodyY + summaryHeight + 7;
+  const modelHeight = bodyHeight - summaryHeight - 7;
+  const half = (box.width - 24) / 2;
+  const drawModelLine = (model, title, x) => {
+    drawBox(ctx, x, modelY, half, modelHeight, PALETTE.white, PALETTE.dark, 1.5);
+    drawText(ctx, title, x + 10, modelY + 8, 11, 800);
+    drawText(ctx, formatMoney(model.cost), x + half - 10, modelY + 7, 13, 800, 'right');
+    drawText(ctx, formatTokens(model.tokens), x + 10, modelY + 28, modelHeight > 100 ? 24 : 18, 850);
+    if (modelHeight > 82) {
+      drawText(ctx, `缓存 ${formatPercent(model.cacheRate)}`, x + 10, modelY + modelHeight - 24, 10, 650, 'left', PALETTE.dark);
+      drawBar(ctx, x + 10, modelY + modelHeight - 11, half - 20, 7, cacheRateToRatio(model.cacheRate));
+    }
+  };
+  drawModelLine(flash, 'V4 FLASH', box.x + 8);
+  drawModelLine(pro, 'V4 PRO', box.x + 16 + half);
 }
 
-function drawUnlockBand(ctx) {
+function normalizeVolcengineWindows(volcengine = {}) {
+  const windows = Array.isArray(volcengine.windows) ? volcengine.windows.filter(Boolean) : [];
+  const find = ids => windows.find(item => ids.includes(String(item?.id || '').toLowerCase())) || null;
+  return [
+    find(['5h', 'five-hour', 'near-5h']) || windows.find(item => /5\s*小时/.test(item?.label || '')),
+    find(['weekly', 'week']) || windows.find(item => /一周|周/.test(item?.label || '')),
+    find(['monthly', 'month']) || windows.find(item => /一月|月/.test(item?.label || ''))
+  ];
+}
+
+function drawVolcengine(ctx, volcengine = {}, box) {
+  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
+  drawCardTitle(ctx, '火山方舟 AFP', box, 'Agent Plan 企业版');
+  const windows = normalizeVolcengineWindows(volcengine);
+  if (!windows.some(Boolean)) {
+    drawText(ctx, '尚未同步', box.x + 18, box.y + 58, box.height > 240 ? 30 : 23, 850);
+    drawText(ctx, '进入企业版 Agent Plan 的“用量统计”', box.x + 18, box.y + 101, box.height > 240 ? 14 : 11, 650, 'left', PALETTE.dark);
+    drawText(ctx, '看到 AFP 卡片后点击“同步至 Kindle”', box.x + 18, box.y + 123, box.height > 240 ? 13 : 10, 600, 'left', PALETTE.dark);
+    return;
+  }
+  const bodyY = box.y + 39;
+  const rowHeight = (box.height - 45) / 3;
+  const labels = ['近 5 小时', '近一周', '近一月'];
+  windows.forEach((entry, index) => {
+    const y = bodyY + index * rowHeight;
+    if (index > 0) drawLine(ctx, box.x + 12, y, box.x + box.width - 12, y, 1, PALETTE.dark);
+    const usedPercent = numericValue(entry?.usedPercent) ?? (numericValue(entry?.used) != null && numericValue(entry?.total) ? numericValue(entry.used) / numericValue(entry.total) * 100 : null);
+    drawText(ctx, entry?.label || labels[index], box.x + 14, y + 7, rowHeight < 48 ? 10 : 12, 750, 'left', PALETTE.dark);
+    drawText(ctx, `${formatNumber(entry?.used)} / ${formatNumber(entry?.total)} AFP`, box.x + box.width - 14, y + 5, rowHeight < 48 ? 11 : 14, 800, 'right');
+    const barY = y + (rowHeight < 48 ? 27 : 31);
+    drawBar(ctx, box.x + 14, barY, box.width - 28, rowHeight < 48 ? 7 : 9, usedPercent == null ? 0 : usedPercent / 100);
+    if (rowHeight >= 52) {
+      drawText(ctx, `已用 ${formatPercent(usedPercent)}`, box.x + 14, barY + 12, 9, 650, 'left', PALETTE.dark);
+      drawText(ctx, entry?.resetText ? shorten(entry.resetText, 28) : '重置时间未知', box.x + box.width - 14, barY + 12, 9, 600, 'right', PALETTE.dark);
+    }
+  });
+}
+
+function drawHeader(ctx, sources) {
+  drawText(ctx, 'AI 用量', 28, 18, 34, 800);
+  const names = { codex: 'Codex', deepseek: 'DeepSeek', volcengine: '火山方舟' };
+  drawText(ctx, sources.map(source => names[source]).join(' · '), 572, 30, 13, 650, 'right', PALETTE.dark);
+  drawLine(ctx, 28, 68, 572, 68, 3);
+}
+
+function drawFooter(ctx, state, sources) {
+  drawLine(ctx, 28, 676, 572, 676, 1.5);
+  const labels = { codex: 'C', deepseek: 'D', volcengine: 'V' };
+  const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt)}`).join('  ·  ');
+  drawText(ctx, text, 300, 686, 11, 650, 'center', PALETTE.dark);
   ctx.fillStyle = PALETTE.unlock;
   ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight);
   drawLine(ctx, 0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockTop, 2, PALETTE.ink);
 }
 
-function drawFooter(ctx, state) {
-  drawLine(ctx, 28, 668, 572, 668, 2);
-  drawText(ctx, `Codex ${formatTime(state.codex?.capturedAt)}`, 28, 682, 13, 650, 'left', PALETTE.dark);
-  drawText(ctx, `DeepSeek ${formatTime(state.deepseek?.capturedAt)}`, 572, 682, 13, 650, 'right', PALETTE.dark);
-  drawUnlockBand(ctx);
-}
-
-export function renderKindleDashboard(ctx, state) {
+export function renderKindleDashboard(ctx, state = {}) {
   ctx.fillStyle = PALETTE.white;
   ctx.fillRect(0, 0, KINDLE_LAYOUT.width, KINDLE_LAYOUT.height);
-
-  drawHeader(ctx);
-  drawCodex(ctx, state.codex);
-
-  const deepseek = state.deepseek || {};
-  const flash = modelMetrics(deepseek, 'flash');
-  const pro = modelMetrics(deepseek, 'pro');
-  const todayTokens = numericValue(deepseek.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
-  const todayCost = numericValue(deepseek.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
-  const dailyMode = [todayTokens, todayCost, flash.tokens, pro.tokens, flash.cost, pro.cost].some(value => value != null);
-
-  drawDeepSeekSummary(ctx, deepseek, todayCost, todayTokens);
-  if (dailyMode) {
-    drawModel(ctx, 28, 'V4 FLASH', flash, false);
-    drawModel(ctx, 308, 'V4 PRO', pro, true);
-  } else {
-    drawMonthlyFallback(ctx, deepseek);
+  const sources = resolveDisplaySources(state.displaySources || {});
+  drawHeader(ctx, sources);
+  for (const box of sourceLayoutBoxes(state.displaySources || {})) {
+    if (box.source === 'codex') drawCodex(ctx, state.codex, box);
+    else if (box.source === 'deepseek') drawDeepSeek(ctx, state.deepseek, box);
+    else drawVolcengine(ctx, state.volcengine, box);
   }
-  drawCache(ctx, deepseek, flash, pro, dailyMode);
-  drawFooter(ctx, state);
+  drawFooter(ctx, state, sources);
 }
