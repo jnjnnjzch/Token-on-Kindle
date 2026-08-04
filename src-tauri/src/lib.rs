@@ -276,20 +276,35 @@ async fn open_source(app: AppHandle, source: String) -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn background_refresh_window(window: &WebviewWindow, reload_page: bool) -> Result<(), String> {
+    if window.is_focused().unwrap_or(false) {
+        return window
+            .eval("window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })")
+            .map_err(|error| error.to_string());
+    }
+
+    let _ = window.hide();
+    let script = if reload_page {
+        "window.blur(); location.reload()"
+    } else {
+        "window.blur(); window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })"
+    };
+    window.eval(script).map_err(|error| error.to_string())?;
+    let _ = window.hide();
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn reload_sources(app: &AppHandle) -> Result<(), String> {
     let mut refreshed = 0;
     for label in ["codex-login", "deepseek-login"] {
         if let Some(window) = app.get_webview_window(label) {
-            window
-                .eval("location.reload()")
-                .map_err(|error| error.to_string())?;
+            background_refresh_window(&window, true)?;
             refreshed += 1;
         }
     }
     if let Some(window) = app.get_webview_window("volcengine-login") {
-        window
-            .eval("window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })")
-            .map_err(|error| error.to_string())?;
+        background_refresh_window(&window, false)?;
         refreshed += 1;
     }
     if refreshed == 0 {
@@ -536,10 +551,6 @@ fn return_to_dashboard(window: &WebviewWindow) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let _ = window.hide();
-        if let Some(main) = window.app_handle().get_webview_window("main") {
-            let _ = main.show();
-            let _ = main.set_focus();
-        }
     }
 }
 

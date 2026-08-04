@@ -22,6 +22,12 @@
   };
   const pageLines = () => clean(document.body?.innerText || '').split(/\n+/).map(clean).filter(Boolean);
 
+  window.addEventListener('beforeunload', () => {
+    if (!document.hasFocus()) {
+      try { window.close(); } catch { /* native window guard */ }
+    }
+  });
+
   function signal(payload) {
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
     let binary = '';
@@ -502,7 +508,7 @@
     const hide = document.createElement('button');
     hide.textContent = '隐藏窗口';
     hide.style.cssText = 'padding:7px 9px;border:1px solid #777;background:#fff;color:#111;border-radius:6px';
-    hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };
+    hide.onclick = () => window.close();
     const note = document.createElement('span');
     note.id = '__token_on_kindle_status';
     note.style.cssText = 'grid-column:1/-1;max-width:290px;color:#555;font-size:11px;line-height:1.35';
