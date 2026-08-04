@@ -65,9 +65,13 @@ fn stable_canonical(mut canonical: String) -> String {
         "\n  // Volcengine reads rendered ReactECharts state; request interception stays disabled.",
     );
 
-    let observer_start = canonical
-        .find("  let autoCapturedView = '';")
-        .expect("canonical extractor lifecycle start");
+    let Some(observer_start) = canonical.find("  let autoCapturedView = '';") else {
+        assert!(
+            !canonical.contains("new MutationObserver"),
+            "canonical extractor observer shape changed"
+        );
+        return canonical;
+    };
     let ready_relative = canonical[observer_start..]
         .find("\n\n  if (document.readyState === 'loading')")
         .expect("canonical extractor ready handler");
