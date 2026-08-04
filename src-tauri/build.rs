@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, process::Command};
 
 const ICON_ICO: &[u8] = &[
     0x00,0x00,0x01,0x00,0x01,0x00,0x20,0x20,0x00,0x00,0x00,0x00,0x20,0x00,0xaf,0x00,
@@ -14,10 +14,6 @@ const ICON_ICO: &[u8] = &[
     0xc9,0x1d,0x90,0x03,0x24,0xd0,0xd3,0xef,0x57,0x3a,0x01,0x7b,0x1c,0x16,0x4c,0xb7,0xc9,
     0x80,0x07,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82,
 ];
-
-const BASE_START: &str = "/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR START */";
-const BASE_END: &str = "/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR END */";
-const GENERATED: &str = "/* TOKEN-ON-KINDLE DIRECT CHART BUILD */";
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
@@ -42,108 +38,32 @@ fn ensure_icons() {
     write_if_changed(&icon_dir.join("icon.png"), png);
 }
 
-fn browser_module(path: &PathBuf, replacements: &[(&str, &str)]) -> String {
-    let mut source = fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
-        .replace("\r\n", "\n");
-    for (from, to) in replacements {
-        source = source.replace(from, to);
-    }
-    source
-}
-
-fn canonical_section(source: &str) -> String {
-    let source = source.replace("\r\n", "\n");
-    if let (Some(start), Some(end)) = (source.find(BASE_START), source.find(BASE_END)) {
-        return source[start + BASE_START.len()..end].trim().to_string();
-    }
-    source.trim().to_string()
-}
-
-fn stable_canonical(mut canonical: String) -> String {
-    canonical = canonical.replace(
-        "\n  installVolcengineNetworkCapture();",
-        "\n  // Volcengine reads rendered ReactECharts state; request interception stays disabled.",
-    );
-
-    let Some(observer_start) = canonical.find("  let autoCapturedView = '';") else {
-        assert!(
-            !canonical.contains("new MutationObserver"),
-            "canonical extractor observer shape changed"
-        );
-        return canonical;
-    };
-    let ready_relative = canonical[observer_start..]
-        .find("\n\n  if (document.readyState === 'loading')")
-        .expect("canonical extractor ready handler");
-    let ready_handler = observer_start + ready_relative;
-    let stable_start = r#"  function start() {
-    toolbar();
-    if (source !== 'volcengine') {
-      setTimeout(() => collectAndSignal({ automatic: true }), 2500);
-      setTimeout(() => collectAndSignal({ automatic: true }), 7000);
-    } else {
-      setToolbarStatus('等待企业版用量页面；轻量图表读取器将在页面就绪后同步');
-    }
-  }"#;
-    format!(
-        "{}{}{}",
-        &canonical[..observer_start],
-        stable_start,
-        &canonical[ready_handler..]
-    )
-}
-
 fn compose_extractor() {
     let manifest = manifest_dir();
-    let extractor_path = manifest.join("../web/extractor.js");
-    let current = fs::read_to_string(&extractor_path)
-        .unwrap_or_else(|error| panic!("read {}: {error}", extractor_path.display()));
-    let canonical = stable_canonical(canonical_section(&current));
-    let parser = browser_module(
-        &manifest.join("../shared/volcengine-echarts-parser.mjs"),
-        &[(
-            "export function parseVolcengineEchartsOption",
-            "function parseVolcengineEchartsOption",
-        )],
-    );
-    let access = browser_module(
-        &manifest.join("../shared/volcengine-react-echarts-access.mjs"),
-        &[
-            (
-                "export function inspectReactEchartsFiber",
-                "function inspectReactEchartsFiber",
-            ),
-            (
-                "export function readEchartsOptionFromElement",
-                "function readEchartsOptionFromElement",
-            ),
-        ],
-    );
-    let reader_path = manifest.join("../web/volcengine-chart-reader.js");
-    let reader = fs::read_to_string(&reader_path)
-        .unwrap_or_else(|error| panic!("read {}: {error}", reader_path.display()))
-        .replace("\r\n", "\n");
-    let modules = format!(
-        r#"(() => {{
-  if (!location.hostname.ends_with('volcengine.com')) return;
-  window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
-{parser}
-  window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__ = parseVolcengineEchartsOption;
-{access}
-  window.__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__ = readEchartsOptionFromElement;
-}})();"#
-    ).replace("ends_with", "endsWith");
-    let output = format!(
-        "{GENERATED}\n{modules}\n{BASE_START}\n{canonical}\n{BASE_END}\n{reader}\n"
-    );
+    let script = manifest.join("../tools/compose-extractor.mjs");
+    let status = Command::new("node")
+        .arg(&script)
+        .current_dir(manifest.join(".."))
+        .status()
+        .unwrap_or_else(|error| panic!("run node {}: {error}", script.display()));
+    assert!(status.success(), "extractor composition failed with {status}");
 
-    assert!(output.contains("getEchartsInstance"));
-    assert!(output.contains("__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__"));
-    assert!(output.contains("__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__"));
-    assert!(!output.contains("\n  installVolcengineNetworkCapture();"));
-    assert!(!output.contains("new MutationObserver"));
-    write_if_changed(&extractor_path, output.as_bytes());
+    let target = manifest.join("../web/extractor.js");
+    let output = fs::read_to_string(&target)
+        .unwrap_or_else(|error| panic!("read {}: {error}", target.display()));
+    for marker in [
+        "TOKEN-ON-KINDLE DIRECT READERS BUILD",
+        "platform-internal-api",
+        "getEchartsInstance",
+        "lastGoodChart",
+    ] {
+        assert!(output.contains(marker), "packaged extractor missing {marker}");
+    }
+    assert!(!output.contains("new MutationObserver"), "continuous DOM observer remains active");
+    assert!(
+        !output.contains("\n  installVolcengineNetworkCapture();"),
+        "legacy Volcengine request interception remains active"
+    );
 }
 
 fn generate_version_module() {
@@ -157,11 +77,20 @@ fn generate_version_module() {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=Cargo.toml");
-    println!("cargo:rerun-if-changed=../web/extractor.js");
-    println!("cargo:rerun-if-changed=../web/volcengine-chart-reader.js");
-    println!("cargo:rerun-if-changed=../shared/volcengine-echarts-parser.mjs");
-    println!("cargo:rerun-if-changed=../shared/volcengine-react-echarts-access.mjs");
+    for path in [
+        "Cargo.toml",
+        "../tools/compose-extractor.mjs",
+        "../web/extractor-base.js",
+        "../web/deepseek-direct-reader.js",
+        "../web/volcengine-chart-reader.js",
+        "../shared/deepseek-response-parser-v2.mjs",
+        "../shared/deepseek-summary-parser.mjs",
+        "../shared/deepseek-platform-parser.mjs",
+        "../shared/volcengine-echarts-parser.mjs",
+        "../shared/volcengine-react-echarts-access.mjs",
+    ] {
+        println!("cargo:rerun-if-changed={path}");
+    }
     ensure_icons();
     compose_extractor();
     generate_version_module();
