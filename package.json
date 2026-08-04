@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cross-platform Tauri app that turns Codex, DeepSeek and Volcengine Agent Plan Enterprise usage into a Kindle dashboard.",
   "scripts": {
-    "test": "python tools/materialize-v083.py",
+    "test": "python tools/materialize-v083.py || python tools/finalize-v083.py",
     "smoke": "node tools/smoke-server.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
