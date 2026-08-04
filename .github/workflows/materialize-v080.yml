@@ -22,8 +22,10 @@ jobs:
           node-version: 22
       - name: Materialize real source files
         run: node tools/materialize-v080.mjs
+      - name: Finalize behavior-based tests
+        run: node tools/finalize-v080.mjs
       - name: Remove one-time staging files
-        run: rm -f tools/v080-packed.part* tools/materialize-v080.mjs .github/workflows/materialize-v080.yml
+        run: rm -f tools/v080-packed.part* tools/materialize-v080.mjs tools/finalize-v080.mjs .github/workflows/materialize-v080.yml
       - name: Validate materialized source
         run: npm test
       - name: Commit real source
