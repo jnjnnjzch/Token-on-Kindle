@@ -3,6 +3,8 @@ name: Materialize v0.8.0 source
 on:
   push:
     branches: [agent/v080-source-rebuild]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
