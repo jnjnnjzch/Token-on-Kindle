@@ -8,7 +8,7 @@ const BASE_START = '/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR START */';
 const BASE_END = '/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR END */';
 const GENERATED = '/* TOKEN-ON-KINDLE DIRECT CHART BUILD */';
 
-let canonical = await readFile(extractorUrl, 'utf8');
+let canonical = (await readFile(extractorUrl, 'utf8')).replaceAll('\r\n', '\n');
 if (canonical.includes(BASE_START) && canonical.includes(BASE_END)) {
   canonical = canonical.split(BASE_START)[1].split(BASE_END)[0].replace(/^\s*\n|\n\s*$/g, '');
 }
@@ -36,14 +36,14 @@ if (observerStart >= 0) {
   throw new Error('canonical extractor observer shape changed');
 }
 
-const parserModule = await readFile(parserUrl, 'utf8');
+const parserModule = (await readFile(parserUrl, 'utf8')).replaceAll('\r\n', '\n');
 const parserBrowser = parserModule
   .replace('export function parseVolcengineEchartsOption', 'function parseVolcengineEchartsOption');
-const accessModule = await readFile(accessUrl, 'utf8');
+const accessModule = (await readFile(accessUrl, 'utf8')).replaceAll('\r\n', '\n');
 const accessBrowser = accessModule
   .replace('export function inspectReactEchartsFiber', 'function inspectReactEchartsFiber')
   .replace('export function readEchartsOptionFromElement', 'function readEchartsOptionFromElement');
-const reader = await readFile(readerUrl, 'utf8');
+const reader = (await readFile(readerUrl, 'utf8')).replaceAll('\r\n', '\n');
 const volcengineModules = `(() => {
   if (!location.hostname.endsWith('volcengine.com')) return;
   window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
@@ -54,5 +54,5 @@ ${accessBrowser}
 })();`;
 const output = `${GENERATED}\n${volcengineModules}\n${BASE_START}\n${canonical}\n${BASE_END}\n${reader}\n`;
 const current = await readFile(extractorUrl, 'utf8').catch(() => '');
-if (current !== output) await writeFile(extractorUrl, output);
+if (current.replaceAll('\r\n', '\n') !== output) await writeFile(extractorUrl, output);
 console.log('Composed stable extractor with direct Volcengine chart reader');
