@@ -388,13 +388,134 @@ function normalizeVolcengineWindows(volcengine = {}) {
   ];
 }
 
+export function normalizeVolcengineModels(volcengine = {}) {
+  const models = Array.isArray(volcengine.models) ? volcengine.models.filter(Boolean) : [];
+  return models.map((model, index) => {
+    const inputTokens = numericValue(model.inputTokens);
+    const outputTokens = numericValue(model.outputTokens);
+    const totalTokens = numericValue(model.totalTokens ?? model.tokens)
+      ?? (inputTokens != null || outputTokens != null ? (inputTokens || 0) + (outputTokens || 0) : null);
+    return {
+      id: String(model.id || model.modelId || index),
+      name: String(model.name || model.modelName || model.id || `模型 ${index + 1}`),
+      totalTokens,
+      inputTokens,
+      outputTokens,
+      cachedTokens: numericValue(model.cachedTokens),
+      requests: numericValue(model.requests),
+      afp: numericValue(model.afp)
+    };
+  }).sort((a, b) => (b.totalTokens || 0) - (a.totalTokens || 0) || a.name.localeCompare(b.name));
+}
+
+export function volcengineModelLayoutPlan(boxHeight, modelCount) {
+  const count = Math.max(0, Number(modelCount) || 0);
+  if (!count) return { hasModels: false, quotaHeight: Math.max(0, boxHeight - 45), columns: 0, rows: 0, capacity: 0, visibleCount: 0, overflowCount: 0 };
+  const compact = boxHeight < 210;
+  const medium = boxHeight < 340;
+  const quotaHeight = compact ? 46 : medium ? 62 : 96;
+  const sectionGap = compact ? 4 : medium ? 6 : 9;
+  const modelHeaderHeight = compact ? 12 : 16;
+  const modelAreaHeight = Math.max(24, boxHeight - 39 - quotaHeight - sectionGap - 8);
+  const columns = count === 1 ? 1 : count <= 4 ? 2 : (boxHeight >= 240 ? 3 : 2);
+  const minimumCellHeight = compact ? 24 : medium ? 36 : 50;
+  const rows = Math.max(1, Math.floor((modelAreaHeight - modelHeaderHeight) / minimumCellHeight));
+  const capacity = Math.max(1, rows * columns);
+  const visibleCount = count <= capacity ? count : Math.max(0, capacity - 1);
+  return {
+    hasModels: true,
+    compact,
+    medium,
+    quotaHeight,
+    sectionGap,
+    modelHeaderHeight,
+    modelAreaHeight,
+    columns,
+    rows,
+    capacity,
+    visibleCount,
+    overflowCount: Math.max(0, count - visibleCount)
+  };
+}
+
+function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {
+  const labels = ['5 小时', '一周', '一月'];
+  const cellWidth = (box.width - 24) / 3;
+  windows.forEach((entry, index) => {
+    const left = box.x + 12 + index * cellWidth;
+    const center = left + cellWidth / 2;
+    if (index > 0) drawLine(ctx, left, y + 3, left, y + height - 3, 1, PALETTE.dark);
+    const usedPercent = numericValue(entry?.usedPercent)
+      ?? (numericValue(entry?.used) != null && numericValue(entry?.total) ? numericValue(entry.used) / numericValue(entry.total) * 100 : null);
+    const compact = height < 56;
+    drawText(ctx, entry?.label ? shorten(entry.label.replace('近', ''), 9) : labels[index], center, y + 2, compact ? 8.5 : 10, 750, 'center', PALETTE.dark);
+    drawText(ctx, `${formatNumber(entry?.used)} / ${formatNumber(entry?.total)}`, center, y + (compact ? 14 : 18), compact ? 9.5 : 12, 820, 'center');
+    const barY = y + (compact ? 29 : 37);
+    drawBar(ctx, left + 7, barY, cellWidth - 14, compact ? 5 : 7, usedPercent == null ? 0 : usedPercent / 100);
+    if (!compact) drawText(ctx, formatPercent(usedPercent), center, barY + 10, 8.5, 650, 'center', PALETTE.dark);
+  });
+}
+
+function drawVolcengineModelCell(ctx, model, x, y, width, height, compact) {
+  drawBox(ctx, x, y, width, height, PALETTE.paper, PALETTE.dark, 1);
+  const nameSize = compact ? 8 : height < 46 ? 8.5 : 10;
+  const totalSize = compact ? 10.5 : height < 46 ? 12 : 16;
+  drawText(ctx, shorten(model.name, width > 170 ? 24 : 16), x + 7, y + (compact ? 4 : 5), nameSize, 750, 'left', PALETTE.dark);
+  drawText(ctx, formatTokens(model.totalTokens), x + width - 7, y + (compact ? 3 : 4), totalSize, 850, 'right');
+  if (height >= 42) {
+    const detailY = y + (height >= 58 ? 27 : 23);
+    drawText(ctx, `入 ${formatTokens(model.inputTokens)}`, x + 7, detailY, 8, 650, 'left', PALETTE.dark);
+    drawText(ctx, `出 ${formatTokens(model.outputTokens)}`, x + width - 7, detailY, 8, 650, 'right', PALETTE.dark);
+  }
+  if (height >= 65) {
+    const bottom = y + height - 14;
+    drawText(ctx, `缓存 ${formatTokens(model.cachedTokens)}`, x + 7, bottom, 8, 600, 'left', PALETTE.mid);
+    const right = model.requests != null ? `${formatNumber(model.requests)} 次` : model.afp != null ? `${formatNumber(model.afp)} AFP` : '';
+    if (right) drawText(ctx, right, x + width - 7, bottom, 8, 600, 'right', PALETTE.mid);
+  }
+}
+
+function drawVolcengineModels(ctx, models, box, y, height, plan) {
+  drawText(ctx, '模型 TOKEN', box.x + 12, y, plan.compact ? 9 : 10.5, 800, 'left', PALETTE.dark);
+  drawText(ctx, `${models.length} 个模型`, box.x + box.width - 12, y, plan.compact ? 8.5 : 9.5, 650, 'right', PALETTE.dark);
+  const gridY = y + plan.modelHeaderHeight;
+  const gap = plan.compact ? 3 : 5;
+  const gridWidth = box.width - 24;
+  const cellWidth = (gridWidth - gap * (plan.columns - 1)) / plan.columns;
+  const rowCount = Math.max(1, Math.ceil(Math.min(plan.capacity, plan.visibleCount + (plan.overflowCount ? 1 : 0)) / plan.columns));
+  const cellHeight = Math.max(20, (height - plan.modelHeaderHeight - gap * (rowCount - 1)) / rowCount);
+  const entries = models.slice(0, plan.visibleCount).map(model => ({ type: 'model', model }));
+  if (plan.overflowCount) entries.push({ type: 'overflow', count: plan.overflowCount });
+  entries.forEach((entry, index) => {
+    const column = index % plan.columns;
+    const row = Math.floor(index / plan.columns);
+    const x = box.x + 12 + column * (cellWidth + gap);
+    const cellY = gridY + row * (cellHeight + gap);
+    if (entry.type === 'model') {
+      drawVolcengineModelCell(ctx, entry.model, x, cellY, cellWidth, cellHeight, plan.compact || cellHeight < 34);
+    } else {
+      drawBox(ctx, x, cellY, cellWidth, cellHeight, PALETTE.white, PALETTE.dark, 1);
+      drawText(ctx, `其余 ${entry.count} 个模型`, x + cellWidth / 2, cellY + Math.max(4, (cellHeight - 11) / 2), plan.compact ? 8.5 : 10, 750, 'center', PALETTE.dark);
+    }
+  });
+}
+
 function drawVolcengine(ctx, volcengine = {}, box) {
   drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
-  drawCardTitle(ctx, '火山方舟 AFP', box, 'Agent Plan 企业版');
+  const models = normalizeVolcengineModels(volcengine);
+  drawCardTitle(ctx, '火山方舟 AFP', box, models.length ? `Agent Plan · ${models.length} 模型` : 'Agent Plan 企业版');
   const windows = normalizeVolcengineWindows(volcengine);
   if (!windows.some(Boolean)) {
     drawText(ctx, '尚未同步', box.x + 18, box.y + 55, box.height > 240 ? 30 : 22, 850);
     drawText(ctx, '进入企业版用量统计，看到 AFP 卡片后点击同步', box.x + 18, box.y + 94, box.height > 240 ? 14 : 10, 600, 'left', PALETTE.dark);
+    return;
+  }
+  const plan = volcengineModelLayoutPlan(box.height, models.length);
+  if (models.length) {
+    const quotaY = box.y + 39;
+    drawVolcengineQuotaStrip(ctx, windows, box, quotaY, plan.quotaHeight);
+    const modelY = quotaY + plan.quotaHeight + plan.sectionGap;
+    drawVolcengineModels(ctx, models, box, modelY, plan.modelAreaHeight, plan);
     return;
   }
   const bodyY = box.y + 39;
