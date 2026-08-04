@@ -97,8 +97,12 @@ test('Volcengine overlay reads ReactECharts state without intercepting page requ
   assert.match(reader, /modelChart: chart\.diagnostics/);
   assert.doesNotMatch(reader, /window\.fetch\s*=/);
   assert.doesNotMatch(reader, /XMLHttpRequest/);
-  assert.match(built, /TOKEN-ON-KINDLE v0\.8\.4 DIRECT CHART BUILD/);
+  assert.doesNotMatch(reader, /MutationObserver/);
+  assert.match(reader, /lastGoodChart/);
+  assert.match(reader, /\[1200, 3200, 6500\]/);
+  assert.match(built, /TOKEN-ON-KINDLE DIRECT CHART BUILD/);
   assert.match(built, /__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__/);
+  assert.doesNotMatch(built, /new MutationObserver/);
   const guard = built.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
   assert.ok(guard >= 0, 'Volcengine capture guard must be installed before canonical code');
   assert.doesNotMatch(built, /\n\s*installVolcengineNetworkCapture\(\);/);
