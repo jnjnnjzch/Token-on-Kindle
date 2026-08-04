@@ -7,7 +7,6 @@
   const source = host === 'chatgpt.com' ? 'codex' : host.endsWith('deepseek.com') ? 'deepseek' : null;
   if (!source) return;
 
-  const UPDATE_MS = 10 * 60 * 1000;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
   const number = value => {
@@ -24,10 +23,27 @@
     return match ? Number(match[0]) : null;
   };
   const pageLines = () => clean(document.body?.innerText || '').split(/\n+/).map(clean).filter(Boolean);
+
+  const syncState = {
+    refreshMinutes: numeric(sessionStorage.getItem('__token_on_kindle_refresh_minutes')),
+    syncRequestedAt: sessionStorage.getItem('__token_on_kindle_sync_requested_at') || null
+  };
+
+  function applySyncOptions(options = {}) {
+    const refreshMinutes = numeric(options.refreshMinutes);
+    if (refreshMinutes != null) {
+      syncState.refreshMinutes = refreshMinutes;
+      sessionStorage.setItem('__token_on_kindle_refresh_minutes', String(refreshMinutes));
+    }
+    if (options.syncRequestedAt) {
+      syncState.syncRequestedAt = String(options.syncRequestedAt);
+      sessionStorage.setItem('__token_on_kindle_sync_requested_at', syncState.syncRequestedAt);
+    }
+  }
   const datePattern = /20\d{2}-\d{2}-\d{2}/;
 
   function signal(payload) {
-    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...payload, updateIntervalMinutes: syncState.refreshMinutes, syncRequestedAt: syncState.syncRequestedAt }));
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
     const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
@@ -109,7 +125,6 @@
     return {
       source,
       capturedAt: new Date().toISOString(),
-      updateIntervalMinutes: 10,
       quotas,
       url: location.href
     };
@@ -329,7 +344,6 @@
     return {
       source,
       capturedAt: new Date().toISOString(),
-      updateIntervalMinutes: 10,
       date: costDay?.date || flash?.date || pro?.date || null,
       balance: balanceCard?.value != null ? { value: balanceCard.value, currency: 'CNY' } : null,
       todayCost: costDay?.total != null ? { value: costDay.total, currency: 'CNY' } : null,
@@ -348,6 +362,7 @@
   let collecting = false;
   async function collect() {
     if (collecting) return;
+    applySyncOptions(options);
     collecting = true;
     try {
       const payload = source === 'codex' ? collectCodex() : await collectDeepSeek();

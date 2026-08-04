@@ -8,9 +8,13 @@ const extractor = fs.readFileSync(new URL('../web/extractor-base.js', import.met
 test('background refresh never shows or focuses source windows', () => {
   assert.match(native, /fn background_refresh_window/);
   assert.match(native, /window\.is_focused\(\)\.unwrap_or\(false\)/);
-  assert.match(native, /let _ = window\.hide\(\);[\s\S]*window\.eval\(script\)[\s\S]*let _ = window\.hide\(\);/);
-  assert.match(native, /background_refresh_window\(&window, true\)/);
-  assert.match(native, /background_refresh_window\(&window, false\)/);
+  assert.match(native, /window\.eval\(&reload_script\)/);
+  assert.match(native, /window\.eval\(&sync_script\)/);
+  const refreshBlock = native.match(/fn background_refresh_window[\s\S]*?fn reload_sources/)?.[0] || '';
+  assert.ok((refreshBlock.match(/window\.hide\(\)/g) || []).length >= 2);
+  assert.doesNotMatch(refreshBlock, /window\.show\(\)|window\.set_focus\(\)/);
+  assert.match(native, /background_refresh_window\(&window, true, refresh_minutes, &sync_requested_at\)/);
+  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
   assert.equal((native.match(/\.set_focus\(\)/g) || []).length, 1);
 });
 

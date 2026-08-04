@@ -1,6 +1,6 @@
 {
   "name": "token-on-kindle",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "description": "Cross-platform Tauri app that turns Codex, DeepSeek and Volcengine Agent Plan Enterprise usage into a Kindle dashboard.",
