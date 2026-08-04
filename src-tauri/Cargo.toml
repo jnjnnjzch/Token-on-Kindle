@@ -1,10 +1,9 @@
 [package]
 name = "token-on-kindle"
-version = "0.8.4"
+version = "0.8.5"
 description = "Codex and DeepSeek usage dashboard for Kindle"
 authors = ["jnjnnjzch"]
 edition = "2021"
-build = "build-v084.rs"
 
 [lib]
 name = "token_on_kindle_lib"
