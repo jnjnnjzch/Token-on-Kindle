@@ -163,7 +163,6 @@ renderer = renderer.replace(
 )
 renderer_path.write_text(renderer, encoding='utf-8')
 
-# Centralize refresh cadence in the native scheduler and pass one shared batch timestamp.
 lib_path = Path('src-tauri/src/lib.rs')
 lib = lib_path.read_text(encoding='utf-8')
 start = '#[cfg(not(any(target_os = "android", target_os = "ios")))]\nfn background_refresh_window'
@@ -220,7 +219,6 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
 lib = replace_between(lib, start, end, replacement)
 lib_path.write_text(lib, encoding='utf-8')
 
-# Remove page-local recurring timers and carry the native scheduler context in every payload.
 for extractor_path in [Path('web/extractor-base.js'), Path('web/extractor.js')]:
     extractor = extractor_path.read_text(encoding='utf-8')
     extractor = extractor.replace('  const UPDATE_MS = 10 * 60 * 1000;\n', '')
@@ -314,7 +312,83 @@ test('all sources share the native refresh batch and no page owns a recurring ti
 });
 ''', encoding='utf-8')
 
-Path('docs/v0.8.2.md').write_text('''# v0.8.2\n\n- DeepSeek model cards use a reusable balanced vertical-flow algorithm instead of fixed pixel offsets.\n- Summary cells, model totals, cache breakdowns, and cache bars distribute available space evenly and center bounded content on tall Kindle layouts.\n- The native application refresh scheduler is the only recurring source timer.\n- Codex, DeepSeek, and Volcengine receive the same refresh interval and batch timestamp.\n- Volcengine auto-captures once when an AFP usage view is recognized, then follows the same application refresh cadence as the other sources.\n''', encoding='utf-8')
+Path('tests/enterprise-flow-v080.test.mjs').write_text(r'''import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const extractor = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
+const app = fs.readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+const index = fs.readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+const native = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+
+test('enterprise Agent Plan capture is explicitly anchored to the AFP usage view', () => {
+  for (const label of ['近5小时用量', '近一周用量', '近一月用量']) assert.match(extractor, new RegExp(label));
+  assert.match(extractor, /同步至 Kindle/);
+  assert.match(extractor, /sync\.onclick = \(\) => collectAndSignal\(\{ manual: true \}\)/);
+  assert.match(extractor, /__TOKEN_ON_KINDLE_SYNC__/);
+  assert.match(extractor, /volcengine\.com/);
+  assert.match(extractor, /windows/);
+});
+
+test('enterprise background refresh captures the confirmed view in the shared native batch', () => {
+  assert.match(native, /for label in \["codex-login", "deepseek-login"\]/);
+  assert.match(native, /get_webview_window\("volcengine-login"\)/);
+  assert.match(native, /let sync_requested_at = timestamp\(\);/);
+  assert.match(native, /automatic: true, refreshMinutes: \{refresh_minutes\}, syncRequestedAt:/);
+  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
+  assert.doesNotMatch(native, /for label in \["codex-login", "deepseek-login", "volcengine-login"\]/);
+});
+
+test('source selection is only Codex, DeepSeek, and Volcengine', () => {
+  for (const id of ['display-codex', 'display-deepseek', 'display-volcengine']) assert.match(index, new RegExp(id));
+  assert.doesNotMatch(index, /display-deepseek-flash|display-deepseek-pro/);
+  assert.match(app, /codex: true, deepseek: true, volcengine: true/);
+});
+''', encoding='utf-8')
+
+Path('tests/windows-background-focus-v081.test.mjs').write_text(r'''import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const native = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+const extractor = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
+
+test('background refresh never shows or focuses source windows', () => {
+  assert.match(native, /fn background_refresh_window/);
+  assert.match(native, /window\.is_focused\(\)\.unwrap_or\(false\)/);
+  assert.match(native, /window\.eval\(&reload_script\)/);
+  assert.match(native, /window\.eval\(&sync_script\)/);
+  const refreshBlock = native.match(/fn background_refresh_window[\s\S]*?fn reload_sources/)?.[0] || '';
+  assert.ok((refreshBlock.match(/window\.hide\(\)/g) || []).length >= 2);
+  assert.doesNotMatch(refreshBlock, /window\.show\(\)|window\.set_focus\(\)/);
+  assert.match(native, /background_refresh_window\(&window, true, refresh_minutes, &sync_requested_at\)/);
+  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
+  assert.equal((native.match(/\.set_focus\(\)/g) || []).length, 1);
+});
+
+test('hiding a source window does not summon the dashboard', () => {
+  const returnBlock = native.match(/fn return_to_dashboard[\s\S]*?fn handle_title_signal/)?.[0] || '';
+  assert.match(returnBlock, /window\.hide\(\)/);
+  assert.doesNotMatch(returnBlock, /main\.show\(\)|main\.set_focus\(\)/);
+  assert.match(extractor, /hide\.onclick = \(\) => window\.close\(\)/);
+  assert.doesNotMatch(extractor, /__TOKEN_ON_KINDLE_ACTION__:dashboard/);
+});
+
+test('hidden WebViews request another hide before background navigation', () => {
+  assert.match(extractor, /beforeunload/);
+  assert.match(extractor, /!document\.hasFocus\(\)/);
+  assert.match(extractor, /window\.close\(\)/);
+});
+''', encoding='utf-8')
+
+Path('docs/v0.8.2.md').write_text('''# v0.8.2
+
+- DeepSeek model cards use a reusable balanced vertical-flow algorithm instead of fixed pixel offsets.
+- Summary cells, model totals, cache breakdowns, and cache bars distribute available space evenly and center bounded content on tall Kindle layouts.
+- The native application refresh scheduler is the only recurring source timer.
+- Codex, DeepSeek, and Volcengine receive the same refresh interval and batch timestamp.
+- Volcengine auto-captures once when an AFP usage view is recognized, then follows the same application refresh cadence as the other sources.
+''', encoding='utf-8')
 
 subprocess.run(['node', 'tools/sync-version.mjs', 'v0.8.2'], check=True)
 
@@ -325,7 +399,6 @@ if package['scripts']['test'].startswith(prefix):
     package['scripts']['test'] = package['scripts']['test'][len(prefix):]
 package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
-# Validate the fully materialized tree before publishing it to the PR branch.
 subprocess.run(['npm', 'test'], check=True)
 
 if os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('GITHUB_HEAD_REF') == BRANCH:
