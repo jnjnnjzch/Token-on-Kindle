@@ -4,7 +4,7 @@
   window.__TOKEN_ON_KINDLE_INSTALLED__ = true;
 
   const host = location.hostname;
-  const source = host === 'chatgpt.com' ? 'codex' : host.endsWith('deepseek.com') ? 'deepseek' : null;
+  const source = host === 'chatgpt.com' ? 'codex' : host.endsWith('deepseek.com') ? 'deepseek' : host.endsWith('volcengine.com') ? 'volcengine' : null;
   if (!source) return;
 
   const UPDATE_MS = 10 * 60 * 1000;
@@ -30,7 +30,7 @@
     const pageTitle = document.title;
     document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;
     setTimeout(() => {
-      document.title = pageTitle || (source === 'codex' ? 'Codex Analytics' : 'DeepSeek Platform');
+      document.title = pageTitle || (source === 'codex' ? 'Codex Analytics' : source === 'deepseek' ? 'DeepSeek Platform' : '火山方舟 Agent Plan 企业版');
     }, 250);
   }
 
@@ -316,6 +316,109 @@
     return responses;
   }
 
+
+  const VOLCENGINE_WINDOWS = [
+    { id: '5h', label: '近5小时用量' },
+    { id: 'weekly', label: '近一周用量' },
+    { id: 'monthly', label: '近一月用量' }
+  ];
+
+  function scaledNumber(value) {
+    const text = String(value ?? '').replaceAll(',', '').trim();
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    let parsed = Number(match[0]);
+    if (!Number.isFinite(parsed)) return null;
+    if (/亿/.test(text)) parsed *= 100000000;
+    else if (/万/.test(text)) parsed *= 10000;
+    return parsed;
+  }
+
+  function exactVisibleElement(label) {
+    return [...document.querySelectorAll('span,div,p,strong,label,h1,h2,h3,h4')]
+      .find(element => clean(element.textContent) === label);
+  }
+
+  function usageCard(label) {
+    const labelElement = exactVisibleElement(label);
+    if (!labelElement) return null;
+    let node = labelElement;
+    let best = null;
+    for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+      const text = clean(node.innerText || node.textContent || '');
+      if (!text.includes(label) || text.length > 2200) continue;
+      best = node;
+      if (node.querySelector('[aria-valuenow], [role="progressbar"], [title]')) return node;
+    }
+    return best;
+  }
+
+  function resetFromText(text) {
+    const line = String(text || '').split(/\n+/).map(clean)
+      .find(value => /(?:后重置|后刷新|重置于|下次重置)/.test(value));
+    if (line) return line.slice(0, 80);
+    const match = String(text || '').match(/([^\n]{0,60}(?:后重置|后刷新|重置于|下次重置)[^\n]{0,20})/);
+    return match ? clean(match[1]) : null;
+  }
+
+  function collectVolcengineWindow(definition) {
+    const card = usageCard(definition.label);
+    if (!card) return null;
+    const text = card.innerText || card.textContent || '';
+    const progress = card.querySelector('[aria-valuenow]');
+    let usedPercent = numeric(progress?.getAttribute('aria-valuenow'));
+    const ratio = text.match(/([\d,.]+(?:\.\d+)?\s*(?:万|亿)?)\s*(?:AFP)?\s*[/／]\s*([\d,.]+(?:\.\d+)?\s*(?:万|亿)?)/i);
+    let used = ratio ? scaledNumber(ratio[1]) : null;
+    let total = ratio ? scaledNumber(ratio[2]) : null;
+
+    if (total == null) {
+      const titled = [...card.querySelectorAll('[title]')]
+        .map(element => scaledNumber(element.getAttribute('title')))
+        .filter(value => value != null && value > 0);
+      if (titled.length) total = Math.max(...titled);
+    }
+    if (usedPercent == null) {
+      const percentMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
+      usedPercent = percentMatch ? Number(percentMatch[1]) : null;
+    }
+    if (used == null && total != null && usedPercent != null) used = total * usedPercent / 100;
+    if (usedPercent == null && used != null && total) usedPercent = used / total * 100;
+
+    return {
+      id: definition.id,
+      label: definition.label,
+      used,
+      total,
+      usedPercent,
+      remainingPercent: usedPercent == null ? null : Math.max(0, 100 - usedPercent),
+      resetText: resetFromText(text)
+    };
+  }
+
+  function volcengineUsageReady() {
+    const body = document.body?.innerText || '';
+    return VOLCENGINE_WINDOWS.every(item => body.includes(item.label));
+  }
+
+  function collectVolcengine() {
+    const windows = VOLCENGINE_WINDOWS.map(collectVolcengineWindow).filter(Boolean);
+    return {
+      source,
+      capturedAt: new Date().toISOString(),
+      updateIntervalMinutes: 10,
+      plan: 'Agent Plan 企业版',
+      unit: 'AFP',
+      windows,
+      url: location.href,
+      diagnostics: {
+        primarySource: windows.length ? 'enterprise-usage-view' : 'waiting-for-enterprise-usage-view',
+        instruction: windows.length ? null : '进入 Agent Plan 企业版的“用量统计”，看到三张 AFP 用量卡后点击“同步至 Kindle”',
+        quotaCount: windows.length,
+        usageViewReady: volcengineUsageReady()
+      }
+    };
+  }
+
   async function collectDeepSeek() {
     await sleep(350);
     const balance = cardMetric(['balance', '余额'], money);
@@ -369,33 +472,82 @@
     if (collecting) return;
     collecting = true;
     try {
-      const payload = source === 'codex' ? collectCodex() : await collectDeepSeek();
+      if (source === 'volcengine' && !volcengineUsageReady()) {
+        setToolbarStatus('请进入企业版 Agent Plan → 用量统计');
+        return;
+      }
+      const payload = source === 'codex' ? collectCodex() : source === 'deepseek' ? await collectDeepSeek() : collectVolcengine();
       signal(payload);
     } finally {
       collecting = false;
     }
   }
 
+  function setToolbarStatus(message, state = '') {
+    const note = document.querySelector('#__token_on_kindle_status');
+    if (!note) return;
+    note.textContent = message;
+    note.dataset.state = state;
+  }
+
   function toolbar() {
     if (document.getElementById('__token_on_kindle_toolbar')) return;
     const root = document.createElement('div');
     root.id = '__token_on_kindle_toolbar';
-    root.style.cssText = 'position:fixed;z-index:2147483647;right:14px;bottom:14px;padding:8px;background:white;color:black;border:2px solid black;border-radius:8px;font:13px sans-serif;display:flex;gap:6px;box-shadow:0 4px 14px rgba(0,0,0,.18)';
+    root.style.cssText = 'position:fixed;z-index:2147483647;right:14px;bottom:14px;padding:9px;background:white;color:black;border:2px solid black;border-radius:9px;font:13px sans-serif;display:grid;grid-template-columns:auto auto;gap:6px;box-shadow:0 4px 14px rgba(0,0,0,.18)';
     const sync = document.createElement('button');
-    sync.textContent = '同步到 Kindle';
-    sync.onclick = collectAndSignal;
+    sync.textContent = '同步至 Kindle';
+    sync.style.cssText = 'padding:7px 11px;border:1px solid #111;background:#111;color:#fff;border-radius:6px;font-weight:700';
+    sync.onclick = () => collectAndSignal({ manual: true });
     const hide = document.createElement('button');
     hide.textContent = '隐藏窗口';
+    hide.style.cssText = 'padding:7px 9px;border:1px solid #777;background:#fff;color:#111;border-radius:6px';
     hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };
-    root.append(sync, hide);
+    const note = document.createElement('span');
+    note.id = '__token_on_kindle_status';
+    note.style.cssText = 'grid-column:1/-1;max-width:290px;color:#555;font-size:11px;line-height:1.35';
+    note.textContent = source === 'volcengine' ? '进入企业版“用量统计”后点击同步' : '登录并打开用量页面后点击同步';
+    root.append(sync, hide, note);
     document.documentElement.appendChild(root);
   }
 
+  const originalCollectAndSignal = collectAndSignal;
+  collectAndSignal = async function(options = {}) {
+    toolbar();
+    setToolbarStatus('正在读取当前页面…');
+    try {
+      await originalCollectAndSignal();
+      if (source === 'volcengine' && !volcengineUsageReady()) return;
+      sessionStorage.setItem('__token_on_kindle_synced_view', location.href);
+      setToolbarStatus(options.manual ? '已同步至 Kindle' : '后台同步完成', 'success');
+    } catch (error) {
+      setToolbarStatus('同步失败：' + String(error?.message || error).slice(0, 80), 'error');
+      console.error('[Token on Kindle] collection failed', error);
+    }
+  };
+  window.__TOKEN_ON_KINDLE_SYNC__ = collectAndSignal;
+
+  let autoCapturedView = '';
+  const observer = new MutationObserver(() => {
+    toolbar();
+    if (source !== 'volcengine' || !volcengineUsageReady()) return;
+    const marker = location.href + '|' + (document.body?.innerText?.length || 0);
+    if (marker === autoCapturedView) return;
+    autoCapturedView = marker;
+    setToolbarStatus('已识别企业版 AFP 用量视图，可点击同步');
+    setTimeout(() => collectAndSignal({ automatic: true }), 900);
+  });
+
   function start() {
     toolbar();
-    setTimeout(collectAndSignal, 2500);
-    setTimeout(collectAndSignal, 7000);
-    setInterval(collectAndSignal, UPDATE_MS);
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    if (source !== 'volcengine') {
+      setTimeout(() => collectAndSignal({ automatic: true }), 2500);
+      setTimeout(() => collectAndSignal({ automatic: true }), 7000);
+    } else if (volcengineUsageReady()) {
+      setTimeout(() => collectAndSignal({ automatic: true }), 1200);
+    }
+    setInterval(() => collectAndSignal({ automatic: true }), UPDATE_MS);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

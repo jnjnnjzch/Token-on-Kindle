@@ -6,11 +6,24 @@ import { DEFAULT_PROFILE_ID, KINDLE_PROFILES, getKindleProfile } from './profile
 const invoke = window.__TAURI__?.core?.invoke;
 const listen = window.__TAURI__?.event?.listen;
 const REFRESH_STORAGE_KEY = 'token-on-kindle:refresh-minutes';
+const DISPLAY_STORAGE_KEY = 'token-on-kindle:display-sources-v2';
 const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
+const SOURCES = Object.freeze([
+  { id: 'codex', name: 'Codex' },
+  { id: 'deepseek', name: 'DeepSeek' },
+  { id: 'volcengine', name: '火山方舟' }
+]);
 
-let state = { codex: null, deepseek: null, receivedAt: null, refreshMinutes: DEFAULT_REFRESH_MINUTES };
+let state = {
+  codex: null,
+  deepseek: null,
+  volcengine: null,
+  receivedAt: null,
+  refreshMinutes: DEFAULT_REFRESH_MINUTES
+};
+let displaySources = loadDisplaySources();
 const canvas = document.querySelector('#dashboard');
 const previewCtx = canvas.getContext('2d', { willReadFrequently: true });
 let selectedProfileId = localStorage.getItem('token-on-kindle:profile') || DEFAULT_PROFILE_ID;
@@ -20,6 +33,24 @@ const numeric = value => {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+function loadDisplaySources() {
+  const defaults = { codex: true, deepseek: true, volcengine: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem(DISPLAY_STORAGE_KEY) || '{}');
+    const next = { ...defaults };
+    for (const source of SOURCES) {
+      if (typeof saved[source.id] === 'boolean') next[source.id] = saved[source.id];
+    }
+    return Object.values(next).some(Boolean) ? next : defaults;
+  } catch {
+    return defaults;
+  }
+}
+
+function saveDisplaySources() {
+  localStorage.setItem(DISPLAY_STORAGE_KEY, JSON.stringify(displaySources));
+}
 
 function normalizeRefreshMinutes(value) {
   if (value == null || value === '') return DEFAULT_REFRESH_MINUTES;
@@ -47,11 +78,25 @@ function formatSyncTime(value) {
 function hasUsefulData(source, payload) {
   if (!payload) return false;
   if (source === 'codex') return Array.isArray(payload.quotas) && payload.quotas.length > 0;
+  if (source === 'volcengine') {
+    return Array.isArray(payload.windows) && payload.windows.some(item =>
+      numeric(item?.total) != null || numeric(item?.usedPercent) != null
+    );
+  }
   return [
-    numeric(payload.balance), numeric(payload.todayCost), numeric(payload.todayTokens),
-    numeric(payload.account?.cumulativeCost), numeric(payload.models?.flash?.tokens),
+    numeric(payload.balance),
+    numeric(payload.todayCost),
+    numeric(payload.todayTokens),
+    numeric(payload.account?.cumulativeCost),
+    numeric(payload.account?.monthlyCost),
+    numeric(payload.models?.flash?.tokens),
     numeric(payload.models?.pro?.tokens)
   ].some(value => value != null);
+}
+
+function sourceInstruction(source) {
+  if (source === 'volcengine') return '进入 Agent Plan 企业版的“用量统计”，再点同步至 Kindle';
+  return '打开页面登录后，点击同步至 Kindle';
 }
 
 function updateSourceCard(source, payload) {
@@ -61,12 +106,12 @@ function updateSourceCard(source, payload) {
   if (!card || !status || !detail) return;
   if (!payload) {
     card.dataset.state = 'idle';
-    status.textContent = '需要登录';
-    detail.textContent = '点击打开登录页面';
+    status.textContent = '需要登录或导航';
+    detail.textContent = sourceInstruction(source);
   } else if (!hasUsefulData(source, payload)) {
     card.dataset.state = 'error';
-    status.textContent = '同步失败';
-    detail.textContent = payload.diagnostics?.directError || '没有读取到有效数据';
+    status.textContent = '未读取到用量';
+    detail.textContent = payload.diagnostics?.instruction || payload.diagnostics?.directError || sourceInstruction(source);
   } else {
     card.dataset.state = 'connected';
     status.textContent = '已连接';
@@ -74,16 +119,22 @@ function updateSourceCard(source, payload) {
   }
 }
 
+function stateForRender() {
+  return { ...state, displaySources };
+}
+
 function renderToContext(targetCtx, width, height) {
   targetCtx.save();
   targetCtx.setTransform(1, 0, 0, 1, 0, 0);
   targetCtx.clearRect(0, 0, width, height);
   targetCtx.setTransform(width / 600, 0, 0, height / 800, 0, 0);
-  renderKindleDashboard(targetCtx, state);
+  renderKindleDashboard(targetCtx, stateForRender());
   targetCtx.restore();
 }
 
-function renderPreview() { renderToContext(previewCtx, 600, 800); }
+function renderPreview() {
+  renderToContext(previewCtx, 600, 800);
+}
 
 function updateProfileUi() {
   const profile = getKindleProfile(selectedProfileId);
@@ -105,9 +156,32 @@ function initializeProfileSelect() {
     selectedProfileId = getKindleProfile(select.value).id;
     localStorage.setItem('token-on-kindle:profile', selectedProfileId);
     updateProfileUi();
-    publish().catch(error => { document.querySelector('#service').textContent = `生成失败：${error.message}`; });
+    publish().catch(error => {
+      document.querySelector('#service').textContent = `生成失败：${error.message}`;
+    });
   });
   updateProfileUi();
+}
+
+function initializeSourceSelection() {
+  for (const source of SOURCES) {
+    const input = document.querySelector(`#display-${source.id}`);
+    if (!input) continue;
+    input.checked = displaySources[source.id];
+    input.addEventListener('change', () => {
+      const next = { ...displaySources, [source.id]: input.checked };
+      if (!Object.values(next).some(Boolean)) {
+        input.checked = true;
+        document.querySelector('#service').textContent = '至少保留一个统计来源';
+        return;
+      }
+      displaySources = next;
+      saveDisplaySources();
+      publish().catch(error => {
+        document.querySelector('#service').textContent = `生成失败：${error.message}`;
+      });
+    });
+  }
 }
 
 function updateRefreshUi() {
@@ -131,14 +205,16 @@ async function publish() {
 }
 
 function updateUi() {
-  updateSourceCard('codex', state.codex);
-  updateSourceCard('deepseek', state.deepseek);
-  const codexDiagnostic = diagnosticSnapshot('codex', state.codex);
-  const deepseekDiagnostic = diagnosticSnapshot('deepseek', state.deepseek);
-  document.querySelector('#codex-status').textContent = codexDiagnostic ? JSON.stringify(codexDiagnostic, null, 2) : '尚未采集';
-  document.querySelector('#deepseek-status').textContent = deepseekDiagnostic ? JSON.stringify(deepseekDiagnostic, null, 2) : '尚未采集';
+  for (const source of SOURCES) {
+    updateSourceCard(source.id, state[source.id]);
+    const diagnostic = diagnosticSnapshot(source.id, state[source.id]);
+    const panel = document.querySelector(`#${source.id}-status`);
+    if (panel) panel.textContent = diagnostic ? JSON.stringify(diagnostic, null, 2) : '尚未采集';
+  }
   updateRefreshUi();
-  publish().catch(error => { document.querySelector('#service').textContent = `生成失败：${error.message}`; });
+  publish().catch(error => {
+    document.querySelector('#service').textContent = `生成失败：${error.message}`;
+  });
 }
 
 async function applySavedRefreshInterval() {
@@ -150,9 +226,42 @@ async function applySavedRefreshInterval() {
   document.querySelector('#browser-url').textContent = settings.browserUrl;
 }
 
+function browserPreviewState() {
+  return {
+    codex: {
+      capturedAt: new Date().toISOString(),
+      quotas: [
+        { id: 'weekly', remainingPercent: 62, usedPercent: 38, resetText: '3 天后重置' },
+        { id: '5h', remainingPercent: 74, usedPercent: 26, resetText: '1 小时后重置' }
+      ]
+    },
+    deepseek: {
+      capturedAt: new Date().toISOString(),
+      balance: { value: 108.2 },
+      todayCost: { value: 2.34 },
+      todayTokens: { value: 1530000 },
+      account: { cumulativeCost: 286.4, monthlyCost: 42.8, monthlyTokens: 28400000 },
+      models: {
+        flash: { tokens: 890000, cost: 0.82, cacheRate: 76 },
+        pro: { tokens: 640000, cost: 1.52, cacheRate: 68 }
+      }
+    },
+    volcengine: {
+      capturedAt: new Date().toISOString(),
+      windows: [
+        { id: '5h', label: '近5小时用量', used: 325.22, total: 4000, usedPercent: 8.13, resetText: '2 小时后重置' },
+        { id: 'weekly', label: '近一周用量', used: 322, total: 14000, usedPercent: 2.3, resetText: '4 天后重置' },
+        { id: 'monthly', label: '近一月用量', used: 320, total: 40000, usedPercent: 0.8, resetText: '18 天后重置' }
+      ]
+    }
+  };
+}
+
 async function load() {
   initializeProfileSelect();
+  initializeSourceSelection();
   if (!invoke) {
+    state = { ...state, ...browserPreviewState() };
     document.querySelector('#service').textContent = '浏览器预览模式';
     updateUi();
     return;
@@ -170,17 +279,22 @@ async function load() {
 }
 
 async function openSource(source) {
-  document.querySelector('#service').textContent = `正在打开 ${source === 'codex' ? 'Codex' : 'DeepSeek'}…`;
+  const name = SOURCES.find(item => item.id === source)?.name || source;
+  document.querySelector('#service').textContent = `正在打开 ${name}…`;
   try {
     await invoke?.('open_source', { source });
-    document.querySelector('#service').textContent = serviceDescription();
-  } catch (error) { document.querySelector('#service').textContent = `打开失败：${error}`; }
+    document.querySelector('#service').textContent = source === 'volcengine'
+      ? '请进入 Agent Plan 企业版的“用量统计”，看到 AFP 卡片后点击“同步至 Kindle”'
+      : `${name} 页面已打开，请登录后点击“同步至 Kindle”`;
+  } catch (error) {
+    document.querySelector('#service').textContent = `打开失败：${error}`;
+  }
 }
 
 async function refreshNow() {
   const button = document.querySelector('#refresh');
   button.disabled = true;
-  document.querySelector('#service').textContent = '正在刷新两个数据源…';
+  document.querySelector('#service').textContent = '正在刷新数据源；火山方舟保留当前企业版用量视图…';
   try {
     await invoke?.('refresh_sources');
     setTimeout(() => {
@@ -206,7 +320,9 @@ async function saveRefreshInterval() {
     updateRefreshUi();
     await publish();
     document.querySelector('#service').textContent = serviceDescription('刷新间隔已保存');
-  } catch (error) { document.querySelector('#service').textContent = `保存失败：${error}`; }
+  } catch (error) {
+    document.querySelector('#service').textContent = `保存失败：${error}`;
+  }
 }
 
 async function copyText(selector, button, successText) {
@@ -215,14 +331,21 @@ async function copyText(selector, button, successText) {
     const previous = button.textContent;
     button.textContent = successText;
     setTimeout(() => { button.textContent = previous; }, 1200);
-  } catch { document.querySelector('#service').textContent = '复制失败，请手动选择地址'; }
+  } catch {
+    document.querySelector('#service').textContent = '复制失败，请手动选择地址';
+  }
 }
 
-document.querySelector('#open-codex').onclick = () => openSource('codex');
-document.querySelector('#open-deepseek').onclick = () => openSource('deepseek');
+for (const source of SOURCES) {
+  document.querySelector(`#open-${source.id}`)?.addEventListener('click', () => openSource(source.id));
+}
 document.querySelector('#refresh').onclick = refreshNow;
 document.querySelector('#save-refresh').onclick = saveRefreshInterval;
-document.querySelector('#refresh-minutes').addEventListener('keydown', event => { if (event.key === 'Enter') saveRefreshInterval(); });
+document.querySelector('#refresh-minutes').addEventListener('keydown', event => {
+  if (event.key === 'Enter') saveRefreshInterval();
+});
 document.querySelector('#copy').onclick = event => copyText('#url', event.currentTarget, '已复制');
 document.querySelector('#copy-browser').onclick = event => copyText('#browser-url', event.currentTarget, '已复制');
-load().catch(error => { document.querySelector('#service').textContent = `启动失败：${error}`; });
+load().catch(error => {
+  document.querySelector('#service').textContent = `启动失败：${error}`;
+});

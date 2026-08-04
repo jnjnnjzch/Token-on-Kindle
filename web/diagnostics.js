@@ -24,6 +24,7 @@ function compactDiagnostics(payload = {}) {
   const parser = diagnostics.parser || {};
   return defined({
     primarySource: diagnostics.primarySource,
+    instruction: diagnostics.instruction,
     networkResponseCount: number(diagnostics.networkResponseCount),
     directError: diagnostics.directError,
     parser: Object.keys(parser).length ? defined({
@@ -77,7 +78,28 @@ function compactDeepSeek(payload = {}) {
   });
 }
 
+function compactVolcengine(payload = {}) {
+  return defined({
+    source: payload.source,
+    capturedAt: payload.capturedAt,
+    plan: payload.plan,
+    unit: payload.unit,
+    windows: Array.isArray(payload.windows) ? payload.windows.map(item => defined({
+      id: item.id,
+      label: item.label,
+      used: number(item.used),
+      total: number(item.total),
+      usedPercent: number(item.usedPercent),
+      remainingPercent: number(item.remainingPercent),
+      resetText: item.resetText
+    })) : undefined,
+    diagnostics: compactDiagnostics(payload)
+  });
+}
+
 export function diagnosticSnapshot(source, payload) {
   if (!payload) return null;
-  return source === 'codex' ? compactCodex(payload) : compactDeepSeek(payload);
+  if (source === 'codex') return compactCodex(payload);
+  if (source === 'volcengine') return compactVolcengine(payload);
+  return compactDeepSeek(payload);
 }

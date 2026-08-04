@@ -20,6 +20,7 @@ use tauri_plugin_opener::OpenerExt as _;
 struct TraySnapshot {
     codex: String,
     deepseek: String,
+    volcengine: String,
     update: String,
     update_actionable: bool,
 }
@@ -29,6 +30,7 @@ impl Default for TraySnapshot {
         Self {
             codex: "需要登录".into(),
             deepseek: "需要登录".into(),
+            volcengine: "需要登录".into(),
             update: "尚未检查".into(),
             update_actionable: false,
         }
@@ -112,12 +114,14 @@ pub(crate) fn set_tray_source_status(
     app: AppHandle,
     codex: String,
     deepseek: String,
+    volcengine: String,
 ) -> Result<(), String> {
     {
         let state = app.state::<DesktopState>();
         let mut snapshot = state.snapshot.lock().map_err(|_| "托盘状态锁已损坏")?;
         snapshot.codex = clean(codex, "需要登录");
         snapshot.deepseek = clean(deepseek, "需要登录");
+        snapshot.volcengine = clean(volcengine, "需要登录");
     }
     rebuild_menu(&app)
 }
@@ -226,7 +230,7 @@ fn create_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let status = MenuItem::with_id(
         app,
         "status",
-        format!("Codex {} · DeepSeek {}", snapshot.codex, snapshot.deepseek),
+        format!("Codex {} · DeepSeek {} · 火山 {}", snapshot.codex, snapshot.deepseek, snapshot.volcengine),
         false,
         None::<&str>,
     )?;
@@ -240,6 +244,7 @@ fn create_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let show = MenuItem::with_id(app, "show", "显示/隐藏看板", true, None::<&str>)?;
     let codex = MenuItem::with_id(app, "codex", "打开 Codex", true, None::<&str>)?;
     let deepseek = MenuItem::with_id(app, "deepseek", "打开 DeepSeek", true, None::<&str>)?;
+    let volcengine = MenuItem::with_id(app, "volcengine", "打开火山方舟企业版", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "立即刷新", true, None::<&str>)?;
     let pause = MenuItem::with_id(
         app,
@@ -266,7 +271,7 @@ fn create_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let quit = MenuItem::with_id(app, "quit", "退出 Token on Kindle", true, None::<&str>)?;
     Menu::with_items(app, &[
-        &status, &update_status, &show, &codex, &deepseek, &refresh, &pause,
+        &status, &update_status, &show, &codex, &deepseek, &volcengine, &refresh, &pause,
         &open_browser, &copy_browser, &autostart, &update, &quit,
     ])
 }
@@ -279,9 +284,10 @@ fn rebuild_menu(app: &AppHandle) -> Result<(), String> {
     let snapshot = app.state::<DesktopState>().snapshot.lock().map(|value| value.clone()).unwrap_or_default();
     let paused = app.state::<DesktopState>().paused.load(Ordering::Relaxed);
     let tooltip = format!(
-        "Token on Kindle · Codex {} · DeepSeek {} · {}{}",
+        "Token on Kindle · Codex {} · DeepSeek {} · 火山 {} · {}{}",
         snapshot.codex,
         snapshot.deepseek,
+        snapshot.volcengine,
         snapshot.update,
         if paused { " · 已暂停" } else { "" },
     );
@@ -305,6 +311,7 @@ pub(crate) fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             "show" => toggle_main(app),
             "codex" => { let _ = super::open_source_impl(app, "codex"); }
             "deepseek" => { let _ = super::open_source_impl(app, "deepseek"); }
+            "volcengine" => { let _ = super::open_source_impl(app, "volcengine"); }
             "refresh" => { let _ = reload_sources(app); }
             "pause" => {
                 let state = app.state::<DesktopState>();
