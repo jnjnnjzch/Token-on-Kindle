@@ -191,9 +191,8 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  desktop-release:
-    name: ${{ matrix.platform }} release
-    if: needs.prepare.outputs.publish == 'true'
+  desktop:
+    name: ${{ matrix.platform }} build
     needs: [prepare, tests]
     strategy:
       fail-fast: false
@@ -222,14 +221,17 @@ jobs:
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Install dependencies
         run: npm install
+      - name: Compile desktop application
+        if: needs.prepare.outputs.publish != 'true'
+        run: npm run tauri build -- --no-bundle
       - name: Build macOS application bundle
-        if: runner.os == 'macOS'
+        if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
         run: npm run tauri build -- --bundles app --no-sign
       - name: Build Linux AppImage
-        if: runner.os == 'Linux'
+        if: needs.prepare.outputs.publish == 'true' && runner.os == 'Linux'
         run: npm run tauri build -- --bundles appimage
       - name: Package macOS
-        if: runner.os == 'macOS'
+        if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
@@ -240,7 +242,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$app_path" "release/Token-on-Kindle-$version-macos-arm64.zip"
           shasum -a 256 "release/Token-on-Kindle-$version-macos-arm64.zip" > "release/Token-on-Kindle-$version-macos-arm64.sha256"
       - name: Package Linux
-        if: runner.os == 'Linux'
+        if: needs.prepare.outputs.publish == 'true' && runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -251,15 +253,16 @@ jobs:
           cp "$appimage" "release/Token-on-Kindle-$version-linux-x64.AppImage"
           chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
           sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
-      - uses: actions/upload-artifact@v4
+      - name: Upload desktop release payload
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.platform }}
           path: release/*
           if-no-files-found: error
 
-  android-release:
-    name: Android arm64 release
-    if: needs.prepare.outputs.publish == 'true'
+  android:
+    name: Android arm64 build
     needs: [prepare, tests]
     runs-on: ubuntu-22.04
     steps:
@@ -283,6 +286,7 @@ jobs:
       - name: Build installable arm64 debug APK
         run: npm run tauri android build -- --debug --apk --target aarch64
       - name: Package Android
+        if: needs.prepare.outputs.publish == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -292,7 +296,9 @@ jobs:
           test -n "$apk"
           cp "$apk" "release/Token-on-Kindle-$version-android-arm64-debug.apk"
           sha256sum "release/Token-on-Kindle-$version-android-arm64-debug.apk" > "release/Token-on-Kindle-$version-android-arm64-debug.sha256"
-      - uses: actions/upload-artifact@v4
+      - name: Upload Android release payload
+        if: needs.prepare.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
         with:
           name: release-android-arm64
           path: release/*
@@ -301,7 +307,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     if: needs.prepare.outputs.publish == 'true'
-    needs: [prepare, windows, desktop-release, android-release]
+    needs: [prepare, windows, desktop, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -342,7 +348,7 @@ jobs:
   cleanup:
     name: Repository cleanup
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [prepare, tests, windows, desktop-release, android-release, publish]
+    needs: [prepare, tests, windows, desktop, android, publish]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
