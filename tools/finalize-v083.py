@@ -7,6 +7,26 @@ BRANCH = 'agent/volcengine-model-token-v083'
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 
+# Keep the established three-source minimums: the Volcengine model grid must
+# adapt inside its compact card rather than taking space away from DeepSeek.
+renderer_path = Path('web/kindle-renderer.js')
+renderer = renderer_path.read_text(encoding='utf-8').replace(
+    "  return sources.map(source => ({ codex: 122, deepseek: 272, volcengine: 170 })[source]);",
+    "  return sources.map(source => ({ codex: 132, deepseek: 294, volcengine: 138 })[source]);"
+)
+renderer_path.write_text(renderer, encoding='utf-8')
+
+test_path = Path('tests/volcengine-model-usage-v083.test.mjs')
+test_source = test_path.read_text(encoding='utf-8')
+test_source = test_source.replace(
+    "test('three-source layout gives Volcengine room for quota strip and model grid', () => {",
+    "test('three-source compact Volcengine card adapts without shrinking DeepSeek', () => {"
+).replace(
+    "  assert.deepEqual(boxes.map(box => box.height), [122, 272, 170]);",
+    "  assert.deepEqual(boxes.map(box => box.height), [132, 294, 138]);\n  const compact = volcengineModelLayoutPlan(138, 8);\n  assert.equal(compact.columns, 2);\n  assert.ok(compact.overflowCount > 0);"
+)
+test_path.write_text(test_source, encoding='utf-8')
+
 package_path = Path('package.json')
 package = json.loads(package_path.read_text(encoding='utf-8'))
 package['version'] = '0.8.3'
