@@ -1,16 +1,17 @@
 {
   "name": "token-on-kindle",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "private": true,
   "type": "module",
   "description": "Cross-platform Tauri app that turns Codex, DeepSeek and Volcengine Agent Plan Enterprise usage into a Kindle dashboard.",
   "scripts": {
-    "test": "node tools/compose-extractor.mjs && node tools/compose-extractor.mjs && node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check web/extractor.js && node --check web/deepseek-direct-reader.js && node --check web/volcengine-chart-reader.js && node --check web/diagnostics.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/volcengine-response-parser.mjs && node --check shared/volcengine-echarts-parser.mjs && node --check shared/volcengine-react-echarts-access.mjs && node --check shared/deepseek-summary-parser.mjs && node --check shared/deepseek-platform-parser.mjs && node --check web/update.js && node --check tools/compose-extractor.mjs && node --check tools/sync-version.mjs && node --check web/desktop.js",
+    "test": "node tools/compose-volcengine-model-list.mjs && node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-extractor.mjs && node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check web/extractor.js && node --check web/deepseek-direct-reader.js && node --check web/volcengine-chart-reader.js && node --check web/diagnostics.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/volcengine-response-parser.mjs && node --check shared/volcengine-echarts-parser.mjs && node --check shared/volcengine-react-echarts-access.mjs && node --check shared/deepseek-summary-parser.mjs && node --check shared/deepseek-platform-parser.mjs && node --check web/update.js && node --check tools/compose-volcengine-model-list.mjs && node --check tools/compose-extractor.mjs && node --check tools/sync-version.mjs && node --check web/desktop.js",
     "smoke": "node tools/smoke-server.mjs",
-    "tauri": "node tools/compose-extractor.mjs && tauri",
-    "dev": "node tools/compose-extractor.mjs && tauri dev",
-    "build": "node tools/compose-extractor.mjs && tauri build",
-    "compose:extractor": "node tools/compose-extractor.mjs"
+    "tauri": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri",
+    "dev": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri dev",
+    "build": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri build",
+    "compose:extractor": "node tools/compose-extractor.mjs",
+    "compose:renderer": "node tools/compose-volcengine-model-list.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
