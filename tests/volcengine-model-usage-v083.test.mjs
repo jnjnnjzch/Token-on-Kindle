@@ -6,6 +6,7 @@ import { normalizeVolcengineModels, sourceLayoutBoxes, volcengineModelLayoutPlan
 
 const base = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
 const compiled = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
+const renderer = fs.readFileSync(new URL('../web/kindle-renderer.js', import.meta.url), 'utf8');
 
 const response = (order, body, path = '/api?Action=GetSeatUsageDetails') => ({ order, body, path, capturedAt: `2026-08-04T0${order}:00:00Z` });
 
@@ -39,29 +40,38 @@ test('legacy response parser still selects the newest payload instead of summing
   assert.equal(parsed.diagnostics.selectedOrder, 2);
 });
 
-test('model layout changes columns and capacity with count and card height', () => {
+test('model text layout keeps every model at every card height', () => {
   const single = volcengineModelLayoutPlan(584, 1);
   const compact = volcengineModelLayoutPlan(170, 8);
   const medium = volcengineModelLayoutPlan(226, 4);
   const tall = volcengineModelLayoutPlan(584, 8);
   assert.equal(single.columns, 1);
   assert.equal(compact.columns, 2);
-  assert.ok(compact.overflowCount > 0);
   assert.equal(medium.columns, 2);
   assert.equal(tall.columns, 3);
-  assert.equal(tall.overflowCount, 0);
-  for (const plan of [compact, medium, tall]) {
-    assert.ok(plan.quotaHeight + plan.modelAreaHeight + plan.sectionGap + 47 <= (plan === compact ? 170 : plan === medium ? 226 : 584) + 2);
+  for (const [plan, count, height] of [[compact, 8, 170], [medium, 4, 226], [tall, 8, 584]]) {
+    assert.equal(plan.visibleCount, count);
+    assert.equal(plan.capacity, count);
+    assert.equal(plan.overflowCount, 0);
+    assert.ok(plan.rows * plan.columns >= count);
+    assert.ok(plan.fontSize >= 7);
+    assert.ok(plan.quotaHeight + plan.modelAreaHeight + plan.sectionGap + 47 <= height + 2);
   }
 });
 
-test('three-source compact Volcengine card adapts without shrinking DeepSeek', () => {
+test('three-source compact Volcengine card shows six models as two columns by three rows', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
   assert.deepEqual(boxes.map(box => box.height), [132, 294, 138]);
-  const compact = volcengineModelLayoutPlan(138, 8);
+  const compact = volcengineModelLayoutPlan(138, 6);
   assert.equal(compact.columns, 2);
-  assert.ok(compact.overflowCount > 0);
+  assert.equal(compact.rows, 3);
+  assert.equal(compact.visibleCount, 6);
+  assert.equal(compact.overflowCount, 0);
   assert.equal(boxes.at(-1).y + boxes.at(-1).height, 666);
+  assert.match(renderer, /TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST/);
+  assert.match(renderer, /全部显示/);
+  assert.doesNotMatch(renderer, /其余 \$\{entry\.count\} 个模型/);
+  assert.doesNotMatch(renderer, /drawVolcengineModelCell\(ctx, entry\.model/);
 });
 
 test('renderer normalizes and sorts arbitrary Volcengine model counts', () => {
