@@ -116,7 +116,6 @@ def patch_extractor(path: Path) -> None:
     path.write_text(extractor, encoding='utf-8')
 
 patch_extractor(Path('web/extractor-base.js'))
-patch_extractor(Path('web/extractor.js'))
 
 Path('tests/windows-background-focus-v081.test.mjs').write_text('''import test from 'node:test';
 import assert from 'node:assert/strict';
