@@ -19,6 +19,20 @@ const modelSummary = model => model ? defined({
   outputTokens: number(model.outputTokens)
 }) : undefined;
 
+const volcengineModelSummary = model => model ? defined({
+  id: model.id,
+  name: model.name,
+  totalTokens: number(model.totalTokens ?? model.tokens),
+  latestTokens: number(model.latestTokens),
+  peakTokens: number(model.peakTokens),
+  pointCount: number(model.pointCount),
+  inputTokens: number(model.inputTokens),
+  outputTokens: number(model.outputTokens),
+  cachedTokens: number(model.cachedTokens),
+  requests: number(model.requests),
+  afp: number(model.afp)
+}) : undefined;
+
 function compactDiagnostics(payload = {}) {
   const diagnostics = payload.diagnostics || {};
   const parser = diagnostics.parser || {};
@@ -33,6 +47,37 @@ function compactDiagnostics(payload = {}) {
       amountDayCount: number(parser.amountDayCount),
       costDayCount: number(parser.costDayCount),
       modelNames: Array.isArray(parser.modelNames) ? parser.modelNames : undefined
+    }) : undefined
+  });
+}
+
+function compactVolcengineDiagnostics(payload = {}) {
+  const diagnostics = payload.diagnostics || {};
+  const chart = diagnostics.modelChart || {};
+  const parser = chart.parser || {};
+  return defined({
+    primarySource: diagnostics.primarySource,
+    instruction: diagnostics.instruction,
+    quotaCount: number(diagnostics.quotaCount),
+    usageViewReady: diagnostics.usageViewReady,
+    modelUsageSource: diagnostics.modelUsageSource,
+    modelCount: number(diagnostics.modelCount),
+    modelChart: Object.keys(chart).length ? defined({
+      chartCount: number(chart.chartCount),
+      chartInstanceId: chart.chartInstanceId,
+      accessMethod: chart.accessMethod,
+      legendNames: Array.isArray(chart.legendNames) ? chart.legendNames : undefined,
+      periodStart: chart.periodStart,
+      periodEnd: chart.periodEnd,
+      granularity: chart.granularity,
+      parser: Object.keys(parser).length ? defined({
+        seriesCount: number(parser.seriesCount),
+        datasetCount: number(parser.datasetCount),
+        xAxisCount: number(parser.xAxisCount),
+        pointCount: number(parser.pointCount),
+        extractionMode: parser.extractionMode,
+        legendNames: Array.isArray(parser.legendNames) ? parser.legendNames : undefined
+      }) : undefined
     }) : undefined
   });
 }
@@ -93,7 +138,14 @@ function compactVolcengine(payload = {}) {
       remainingPercent: number(item.remainingPercent),
       resetText: item.resetText
     })) : undefined,
-    diagnostics: compactDiagnostics(payload)
+    models: Array.isArray(payload.models) ? payload.models.map(volcengineModelSummary).filter(Boolean) : undefined,
+    modelUsage: payload.modelUsage ? defined({
+      source: payload.modelUsage.source,
+      periodStart: payload.modelUsage.periodStart,
+      periodEnd: payload.modelUsage.periodEnd,
+      granularity: payload.modelUsage.granularity
+    }) : undefined,
+    diagnostics: compactVolcengineDiagnostics(payload)
   });
 }
 
