@@ -50,15 +50,16 @@ volcengineAccess = volcengineAccess
   .replace('export function readEchartsOptionFromElement', 'function readEchartsOptionFromElement');
 const volcengineReader = lf(await readFile(volcengineReaderUrl, 'utf8'));
 
-const deepseekModules = `(() => {
+const guarded = (body, assignment) => `(() => {
   if (!location.hostname.endsWith('deepseek.com')) return;
-${deepseekParser}
-  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;
-${deepseekSummary}
-  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;
-${deepseekPlatform}
-  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__ = parseDeepSeekPlatformPayloads;
+${body}
+  ${assignment}
 })();`;
+const deepseekModules = [
+  guarded(deepseekParser, 'window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;'),
+  guarded(deepseekSummary, 'window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;'),
+  guarded(deepseekPlatform, 'window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__ = parseDeepSeekPlatformPayloads;')
+].join('\n');
 const volcengineModules = `(() => {
   if (!location.hostname.endsWith('volcengine.com')) return;
   window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
