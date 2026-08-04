@@ -38,13 +38,7 @@ test('reads every model series directly from the rendered ECharts option', () =>
 
 test('supports ECharts dataset rows when series data is dataset-driven', () => {
   const option = {
-    dataset: [{
-      source: [
-        ['date', 'deepseek-v4-flash', 'kimi-k2.6'],
-        ['2026-08-01', 10, 2],
-        ['2026-08-02', 15, 3]
-      ]
-    }],
+    dataset: [{ source: [['date', 'deepseek-v4-flash', 'kimi-k2.6'], ['2026-08-01', 10, 2], ['2026-08-02', 15, 3]] }],
     xAxis: [{ type: 'category' }],
     series: [{ name: 'deepseek-v4-flash', type: 'bar' }, { name: 'kimi-k2.6', type: 'bar' }]
   };
@@ -64,11 +58,7 @@ test('keeps zero-valued legend models without inventing token points', () => {
 
 test('walks the real React DOM fiber shape to call ReactECharts.getEchartsInstance()', () => {
   const option = { series: [{ name: 'kimi-k2.6', data: [3, 5] }] };
-  const component = {
-    stateNode: { getEchartsInstance: () => ({ getOption: () => option }) },
-    return: null,
-    alternate: null
-  };
+  const component = { stateNode: { getEchartsInstance: () => ({ getOption: () => option }) }, return: null, alternate: null };
   const host = { stateNode: {}, return: component, alternate: null };
   const chart = { parentElement: null };
   Object.defineProperty(chart, '__reactFiber$productionSuffix', { value: host });
@@ -80,9 +70,7 @@ test('walks the real React DOM fiber shape to call ReactECharts.getEchartsInstan
 test('uses the official global ECharts instance when the page exposes it', () => {
   const option = { dataset: [{ source: [['date', 'm'], ['2026-08-04', 7]] }] };
   const chart = { parentElement: null };
-  const result = readEchartsOptionFromElement(chart, {
-    getInstanceByDom: element => element === chart ? { getOption: () => option } : null
-  });
+  const result = readEchartsOptionFromElement(chart, { getInstanceByDom: element => element === chart ? { getOption: () => option } : null });
   assert.equal(result.method, 'echarts-global');
   assert.equal(result.option, option);
 });
@@ -97,8 +85,12 @@ test('Volcengine overlay reads ReactECharts state without intercepting page requ
   assert.match(reader, /modelChart: chart\.diagnostics/);
   assert.doesNotMatch(reader, /window\.fetch\s*=/);
   assert.doesNotMatch(reader, /XMLHttpRequest/);
-  assert.match(built, /TOKEN-ON-KINDLE v0\.8\.4 DIRECT CHART BUILD/);
+  assert.doesNotMatch(reader, /MutationObserver/);
+  assert.match(reader, /lastGoodChart/);
+  assert.match(reader, /\[1200, 3200, 6500\]/);
+  assert.match(built, /TOKEN-ON-KINDLE DIRECT READERS BUILD/);
   assert.match(built, /__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__/);
+  assert.doesNotMatch(built, /new MutationObserver/);
   const guard = built.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
   assert.ok(guard >= 0, 'Volcengine capture guard must be installed before canonical code');
   assert.doesNotMatch(built, /\n\s*installVolcengineNetworkCapture\(\);/);
@@ -113,16 +105,7 @@ test('diagnostic JSON preserves model names, tokens and direct chart access deta
     windows: [],
     models: [{ name: 'kimi-k2.6', totalTokens: 1234, pointCount: 7 }],
     modelUsage: { source: 'react-component', periodStart: '2026-07-29', periodEnd: '2026-08-04', granularity: '天' },
-    diagnostics: {
-      modelUsageSource: 'react-component',
-      modelCount: 1,
-      modelChart: {
-        chartCount: 1,
-        accessMethod: 'react-component',
-        legendNames: ['kimi-k2.6'],
-        parser: { seriesCount: 1, pointCount: 7, extractionMode: 'series' }
-      }
-    }
+    diagnostics: { modelUsageSource: 'react-component', modelCount: 1, modelChart: { chartCount: 1, accessMethod: 'react-component', legendNames: ['kimi-k2.6'], parser: { seriesCount: 1, pointCount: 7, extractionMode: 'series' } } }
   });
   assert.equal(snapshot.models[0].name, 'kimi-k2.6');
   assert.equal(snapshot.models[0].totalTokens, 1234);

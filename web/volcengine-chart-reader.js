@@ -20,12 +20,25 @@
   };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-  function exactVisibleElement(label) {
-    return [...document.querySelectorAll('span,div,p,strong,label,h1,h2,h3,h4')]
-      .find(element => clean(element.textContent) === label);
+  const state = {
+    section: null,
+    chart: null,
+    cards: new Map(),
+    lastGoodChart: null,
+    collecting: false,
+    retryTimer: null,
+    lastHref: location.href
+  };
+
+  function exactVisibleElement(label, root = document) {
+    return [...root.querySelectorAll('h1,h2,h3,h4,strong,label,span,p,div')]
+      .find(element => clean(element.textContent) === label) || null;
   }
 
   function sectionRoot() {
+    if (state.section?.isConnected && clean(state.section.textContent).includes('模型调用明细')) {
+      return state.section;
+    }
     const title = exactVisibleElement('模型调用明细');
     if (!title) return null;
     let node = title;
@@ -34,8 +47,9 @@
       const text = clean(node.innerText || node.textContent || '');
       if (!text.includes('模型调用明细') || text.length > 30_000) continue;
       best = node;
-      if (node.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]')) return node;
+      if (node.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]')) break;
     }
+    state.section = best;
     return best;
   }
 
@@ -50,59 +64,83 @@
     return [...new Map(names.map(name => [name.toLowerCase(), name])).values()];
   }
 
+  function chartElement(root) {
+    if (state.chart?.isConnected && root?.contains(state.chart)) return state.chart;
+    state.chart = root?.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]') || null;
+    return state.chart;
+  }
+
   function chartOption(chart) {
     return window.__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__?.(chart, window.echarts) || null;
   }
 
+  function cachedChartFallback(diagnostics, dates, granularity) {
+    if (!state.lastGoodChart) {
+      return {
+        models: [],
+        periodStart: dates[0] || null,
+        periodEnd: dates[1] || null,
+        granularity: granularity || null,
+        source: 'none',
+        diagnostics
+      };
+    }
+    return {
+      ...state.lastGoodChart,
+      source: `${state.lastGoodChart.source}-cached`,
+      diagnostics: {
+        ...diagnostics,
+        cached: true,
+        cachedFrom: state.lastGoodChart.source,
+        parser: state.lastGoodChart.diagnostics?.parser || null
+      }
+    };
+  }
+
   function readModelChart() {
     const root = sectionRoot();
-    const charts = root ? [...root.querySelectorAll('.echarts-for-react[_echarts_instance_], [_echarts_instance_]')] : [];
+    const chart = chartElement(root);
     const names = legendNames(root);
     const dates = root ? [...root.querySelectorAll('input[placeholder="开始日期"], input[placeholder="结束日期"]')]
       .map(input => clean(input.value)).filter(Boolean) : [];
     const granularity = root ? [...root.querySelectorAll('[class*="granularityTabActive"]')]
       .map(element => clean(element.textContent)).find(value => value === '天' || value === '小时') : null;
     const diagnostics = {
-      chartCount: charts.length,
+      chartCount: chart ? 1 : 0,
       legendNames: names,
       periodStart: dates[0] || null,
       periodEnd: dates[1] || null,
       granularity: granularity || null,
       accessMethod: null,
-      chartInstanceId: null,
-      parser: null
+      chartInstanceId: chart?.getAttribute('_echarts_instance_') || null,
+      parser: null,
+      cached: false
     };
 
-    for (const chart of charts) {
-      const access = chartOption(chart);
-      if (!access?.option) continue;
-      const parsed = window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__?.(
-        access.option,
-        names,
-        { periodStart: dates[0] || null, periodEnd: dates[1] || null, granularity: granularity || null }
-      );
-      diagnostics.accessMethod = access.method;
-      diagnostics.chartInstanceId = chart.getAttribute('_echarts_instance_') || null;
-      diagnostics.parser = parsed?.diagnostics || null;
-      if (parsed?.diagnostics?.pointCount > 0 && parsed.models?.length) {
-        return {
-          models: parsed.models,
-          periodStart: parsed.periodStart,
-          periodEnd: parsed.periodEnd,
-          granularity: parsed.granularity,
-          source: access.method,
-          diagnostics
-        };
-      }
+    if (!chart) return cachedChartFallback(diagnostics, dates, granularity);
+    const access = chartOption(chart);
+    if (!access?.option) return cachedChartFallback(diagnostics, dates, granularity);
+    const parsed = window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__?.(
+      access.option,
+      names,
+      { periodStart: dates[0] || null, periodEnd: dates[1] || null, granularity: granularity || null }
+    );
+    diagnostics.accessMethod = access.method;
+    diagnostics.parser = parsed?.diagnostics || null;
+    if (!parsed?.diagnostics?.pointCount || !parsed.models?.length) {
+      return cachedChartFallback(diagnostics, dates, granularity);
     }
-    return {
-      models: [],
-      periodStart: dates[0] || null,
-      periodEnd: dates[1] || null,
-      granularity: granularity || null,
-      source: 'none',
+
+    const result = {
+      models: parsed.models,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      granularity: parsed.granularity,
+      source: access.method,
       diagnostics
     };
+    state.lastGoodChart = result;
+    return result;
   }
 
   const WINDOWS = [
@@ -112,6 +150,8 @@
   ];
 
   function usageCard(label) {
+    const cached = state.cards.get(label);
+    if (cached?.isConnected && clean(cached.textContent).includes(label)) return cached;
     const labelElement = exactVisibleElement(label);
     if (!labelElement) return null;
     let node = labelElement;
@@ -120,8 +160,9 @@
       const text = clean(node.innerText || node.textContent || '');
       if (!text.includes(label) || text.length > 2200) continue;
       best = node;
-      if (node.querySelector('[aria-valuenow], [role="progressbar"], [title]')) return node;
+      if (node.querySelector('[aria-valuenow], [role="progressbar"], [title]')) break;
     }
+    if (best) state.cards.set(label, best);
     return best;
   }
 
@@ -184,94 +225,120 @@
     setTimeout(() => { document.title = title || '火山方舟 Agent Plan 企业版'; }, 250);
   }
 
-  function toolbarStatus(message, state = '') {
+  function toolbarStatus(message, stateName = '') {
     const note = document.querySelector('#__token_on_kindle_status');
     if (!note) return;
     note.textContent = message;
-    note.dataset.state = state;
+    note.dataset.state = stateName;
   }
 
-  function collectAndSignal() {
-    const windows = WINDOWS.map(collectWindow).filter(Boolean);
-    if (windows.length !== WINDOWS.length) return null;
-    const chart = readModelChart();
-    const payload = {
-      source: 'volcengine',
-      capturedAt: new Date().toISOString(),
-      plan: 'Agent Plan 企业版',
-      unit: 'AFP',
-      windows,
-      models: chart.models,
-      modelUsage: {
-        source: chart.source,
-        periodStart: chart.periodStart,
-        periodEnd: chart.periodEnd,
-        granularity: chart.granularity
-      },
-      url: location.href,
-      diagnostics: {
-        primarySource: 'enterprise-usage-view',
-        quotaCount: windows.length,
-        usageViewReady: true,
-        modelUsageSource: chart.source,
-        modelCount: chart.models.length,
-        modelChart: chart.diagnostics
+  function scheduleRetry(options, delay = 1200) {
+    if (state.retryTimer) clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = null;
+      collectAndSignal({ ...options, retry: true }).catch(() => {});
+    }, delay);
+  }
+
+  async function collectAndSignal(options = {}) {
+    if (state.collecting) return null;
+    state.collecting = true;
+    applySyncOptions(options);
+    try {
+      await sleep(40);
+      const windows = WINDOWS.map(collectWindow).filter(Boolean);
+      if (windows.length !== WINDOWS.length) {
+        toolbarStatus('等待企业版 AFP 用量页面就绪', 'warning');
+        if (!options.retry && (options.manual || options.automatic)) scheduleRetry(options, 1400);
+        return null;
       }
-    };
-    signal(payload);
-    toolbarStatus(
-      chart.models.length ? `已同步 AFP 与 ${chart.models.length} 个模型` : '已同步 AFP；模型图表尚未就绪',
-      chart.models.length ? 'success' : 'warning'
-    );
-    return payload;
+      const chart = readModelChart();
+      const payload = {
+        source: 'volcengine',
+        capturedAt: new Date().toISOString(),
+        plan: 'Agent Plan 企业版',
+        unit: 'AFP',
+        windows,
+        models: chart.models,
+        modelUsage: {
+          source: chart.source,
+          periodStart: chart.periodStart,
+          periodEnd: chart.periodEnd,
+          granularity: chart.granularity
+        },
+        url: location.href,
+        diagnostics: {
+          primarySource: 'enterprise-usage-view',
+          quotaCount: windows.length,
+          usageViewReady: true,
+          modelUsageSource: chart.source,
+          modelCount: chart.models.length,
+          modelChart: chart.diagnostics
+        }
+      };
+      signal(payload);
+      toolbarStatus(
+        chart.models.length ? `已同步 AFP 与 ${chart.models.length} 个模型` : '已同步 AFP；模型图表尚未就绪',
+        chart.models.length ? 'success' : 'warning'
+      );
+      if (!chart.models.length && !options.retry) scheduleRetry(options, 1400);
+      return payload;
+    } finally {
+      state.collecting = false;
+    }
   }
 
   async function directSync(options = {}) {
-    applySyncOptions(options);
-    await sleep(80);
-    return collectAndSignal();
+    return collectAndSignal(options);
   }
 
   function installSyncOverride() {
     window.__TOKEN_ON_KINDLE_SYNC__ = directSync;
     const button = [...document.querySelectorAll('#__token_on_kindle_toolbar button')]
       .find(element => clean(element.textContent) === '同步至 Kindle');
-    if (button && button.dataset.v084DirectChart !== 'true') {
-      button.dataset.v084DirectChart = 'true';
+    if (button && button.dataset.directChartReader !== 'true') {
+      button.dataset.directChartReader = 'true';
       button.onclick = () => directSync({ manual: true });
     }
   }
 
-  let lastMarker = '';
-  function modelMarker() {
-    const root = sectionRoot();
-    const chart = root?.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]');
-    const access = chart ? chartOption(chart) : null;
-    const parser = access?.option
-      ? window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__?.(access.option, legendNames(root))
-      : null;
-    return `${location.href}|${chart?.getAttribute('_echarts_instance_') || 'none'}|${parser?.diagnostics?.pointCount || 0}`;
+  function resetDomCache() {
+    state.section = null;
+    state.chart = null;
+    state.cards.clear();
   }
-
-  const observer = new MutationObserver(() => {
-    installSyncOverride();
-    if (!WINDOWS.every(item => document.body?.innerText?.includes(item.label))) return;
-    const marker = modelMarker();
-    if (marker === lastMarker) return;
-    lastMarker = marker;
-    setTimeout(collectAndSignal, marker.endsWith('|0') ? 900 : 350);
-  });
 
   function start() {
     installSyncOverride();
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-    for (const delay of [1400, 3600, 7200]) {
+    for (const delay of [1200, 3200, 6500]) {
       setTimeout(() => {
         installSyncOverride();
-        collectAndSignal();
+        collectAndSignal({ automatic: true, startup: true }).catch(() => {});
       }, delay);
     }
   }
+
+  window.addEventListener('pageshow', () => {
+    resetDomCache();
+    installSyncOverride();
+    scheduleRetry({ automatic: true, pageshow: true }, 500);
+  });
+  window.addEventListener('popstate', () => {
+    if (location.href === state.lastHref) return;
+    state.lastHref = location.href;
+    resetDomCache();
+    scheduleRetry({ automatic: true, navigation: true }, 700);
+  });
+  window.addEventListener('hashchange', () => {
+    state.lastHref = location.href;
+    resetDomCache();
+    scheduleRetry({ automatic: true, navigation: true }, 700);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    installSyncOverride();
+    scheduleRetry({ automatic: true, visible: true }, 500);
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
