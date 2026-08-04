@@ -19,11 +19,10 @@ canonical = canonical.replace(
 );
 
 const observerStart = canonical.indexOf("  let autoCapturedView = '';");
-const readyHandler = canonical.indexOf("\n\n  if (document.readyState === 'loading')", observerStart);
-if (observerStart < 0 || readyHandler < 0) {
-  throw new Error('canonical extractor lifecycle markers changed');
-}
-const stableStart = `  function start() {
+if (observerStart >= 0) {
+  const readyHandler = canonical.indexOf("\n\n  if (document.readyState === 'loading')", observerStart);
+  if (readyHandler < 0) throw new Error('canonical extractor ready handler changed');
+  const stableStart = `  function start() {
     toolbar();
     if (source !== 'volcengine') {
       setTimeout(() => collectAndSignal({ automatic: true }), 2500);
@@ -32,7 +31,10 @@ const stableStart = `  function start() {
       setToolbarStatus('等待企业版用量页面；轻量图表读取器将在页面就绪后同步');
     }
   }`;
-canonical = `${canonical.slice(0, observerStart)}${stableStart}${canonical.slice(readyHandler)}`;
+  canonical = `${canonical.slice(0, observerStart)}${stableStart}${canonical.slice(readyHandler)}`;
+} else if (canonical.includes('new MutationObserver')) {
+  throw new Error('canonical extractor observer shape changed');
+}
 
 const parserModule = await readFile(parserUrl, 'utf8');
 const parserBrowser = parserModule
