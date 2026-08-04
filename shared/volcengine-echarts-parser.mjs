@@ -64,9 +64,11 @@ function modelNameForSeries(series, index, legendNames) {
 function seriesModels(option, legendNames) {
   const series = Array.isArray(option?.series) ? option.series : [];
   const models = [];
+  const legendSet = new Set(legendNames.map(name => name.toLowerCase()));
   series.forEach((entry, index) => {
     const name = modelNameForSeries(entry, index, legendNames);
     if (!name) return;
+    if (legendSet.size && !legendSet.has(name.toLowerCase())) return;
     const values = pointValues(Array.isArray(entry?.data) ? entry.data : []);
     if (!values.length && !legendNames.some(item => item.toLowerCase() === name.toLowerCase())) return;
     models.push({
