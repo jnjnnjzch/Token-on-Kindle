@@ -16,9 +16,11 @@ if (!source.includes(marker)) {
   const sectionGap = compact ? 4 : medium ? 6 : 9;
   const modelHeaderHeight = compact ? 11 : 15;
   const modelAreaHeight = Math.max(24, boxHeight - 39 - quotaHeight - sectionGap - 8);
-  const columns = compact
-    ? (count <= 3 ? 1 : count <= 10 ? 2 : 3)
-    : (count <= 4 ? 2 : count <= 9 ? 3 : 4);
+  const columns = count === 1
+    ? 1
+    : compact
+      ? (count <= 3 ? 1 : count <= 10 ? 2 : 3)
+      : (count <= 4 ? 2 : count <= 9 ? 3 : 4);
   const rows = Math.max(1, Math.ceil(count / columns));
   const rowHeight = Math.max(7, (modelAreaHeight - modelHeaderHeight) / rows);
   const fontSize = clamp(rowHeight - 1, 7, compact ? 9 : 11);
