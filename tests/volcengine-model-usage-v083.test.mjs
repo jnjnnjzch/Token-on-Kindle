@@ -9,7 +9,7 @@ const compiled = fs.readFileSync(new URL('../web/extractor.js', import.meta.url)
 
 const response = (order, body, path = '/api?Action=GetSeatUsageDetails') => ({ order, body, path, capturedAt: `2026-08-04T0${order}:00:00Z` });
 
-test('Volcengine HTTP parser accepts enterprise seat model detail aliases', () => {
+test('legacy Volcengine response parser remains compatible with exported API fixtures', () => {
   const parsed = parseVolcengineModelUsageResponses([
     response(1, {
       Result: {
@@ -29,7 +29,7 @@ test('Volcengine HTTP parser accepts enterprise seat model detail aliases', () =
   assert.equal(deepseek.requests, 7);
 });
 
-test('newest matching response wins instead of summing repeated refresh payloads', () => {
+test('legacy response parser still selects the newest payload instead of summing refreshes', () => {
   const parsed = parseVolcengineModelUsageResponses([
     response(1, { rows: [{ modelName: 'doubao-seed', totalTokens: 100 }] }),
     response(2, { rows: [{ modelName: 'doubao-seed', totalTokens: 135 }] })
@@ -74,11 +74,14 @@ test('renderer normalizes and sorts arbitrary Volcengine model counts', () => {
   assert.equal(models[2].totalTokens, 25);
 });
 
-test('real packaged extractor contains Volcengine HTTP capture and both parsers', () => {
-  for (const marker of ['GetSeatUsageDetails', 'GetSeatAFPUsage', '__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__', '__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__']) {
-    assert.match(base, new RegExp(marker));
+test('packaged extractor disables legacy Volcengine interception before reading ReactECharts', () => {
+  for (const marker of ['模型调用明细', '__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__', '__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__', 'react-component']) {
     assert.match(compiled, new RegExp(marker));
   }
+  const guard = compiled.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
+  assert.ok(guard >= 0);
+  assert.doesNotMatch(compiled, /\n\s*installVolcengineNetworkCapture\(\);/);
   assert.match(compiled, /source = host === 'chatgpt\.com'.*volcengine/s);
   assert.doesNotMatch(compiled, /setInterval\(\(\) => location\.reload\(\), UPDATE_MS\)/);
+  assert.doesNotMatch(base, /TOKEN-ON-KINDLE v0\.8\.4 DIRECT CHART BUILD/);
 });
