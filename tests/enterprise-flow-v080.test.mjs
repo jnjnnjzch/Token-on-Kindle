@@ -16,10 +16,12 @@ test('enterprise Agent Plan capture is explicitly anchored to the AFP usage view
   assert.match(extractor, /windows/);
 });
 
-test('enterprise background refresh captures the confirmed view instead of reloading the console entry', () => {
+test('enterprise background refresh captures the confirmed view in the shared native batch', () => {
   assert.match(native, /for label in \["codex-login", "deepseek-login"\]/);
   assert.match(native, /get_webview_window\("volcengine-login"\)/);
-  assert.match(native, /__TOKEN_ON_KINDLE_SYNC__\?\.\(\{ automatic: true \}\)/);
+  assert.match(native, /let sync_requested_at = timestamp\(\);/);
+  assert.match(native, /automatic: true, refreshMinutes: \{refresh_minutes\}, syncRequestedAt:/);
+  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
   assert.doesNotMatch(native, /for label in \["codex-login", "deepseek-login", "volcengine-login"\]/);
 });
 

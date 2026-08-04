@@ -7,7 +7,6 @@
   const source = host === 'chatgpt.com' ? 'codex' : host.endsWith('deepseek.com') ? 'deepseek' : host.endsWith('volcengine.com') ? 'volcengine' : null;
   if (!source) return;
 
-  const UPDATE_MS = 10 * 60 * 1000;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
   const numeric = value => {
@@ -22,6 +21,23 @@
   };
   const pageLines = () => clean(document.body?.innerText || '').split(/\n+/).map(clean).filter(Boolean);
 
+  const syncState = {
+    refreshMinutes: numeric(sessionStorage.getItem('__token_on_kindle_refresh_minutes')),
+    syncRequestedAt: sessionStorage.getItem('__token_on_kindle_sync_requested_at') || null
+  };
+
+  function applySyncOptions(options = {}) {
+    const refreshMinutes = numeric(options.refreshMinutes);
+    if (refreshMinutes != null) {
+      syncState.refreshMinutes = refreshMinutes;
+      sessionStorage.setItem('__token_on_kindle_refresh_minutes', String(refreshMinutes));
+    }
+    if (options.syncRequestedAt) {
+      syncState.syncRequestedAt = String(options.syncRequestedAt);
+      sessionStorage.setItem('__token_on_kindle_sync_requested_at', syncState.syncRequestedAt);
+    }
+  }
+
   window.addEventListener('beforeunload', () => {
     if (!document.hasFocus()) {
       try { window.close(); } catch { /* native window guard */ }
@@ -29,7 +45,7 @@
   });
 
   function signal(payload) {
-    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...payload, updateIntervalMinutes: syncState.refreshMinutes, syncRequestedAt: syncState.syncRequestedAt }));
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
     const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
@@ -411,7 +427,6 @@
     return {
       source,
       capturedAt: new Date().toISOString(),
-      updateIntervalMinutes: 10,
       plan: 'Agent Plan 企业版',
       unit: 'AFP',
       windows,
@@ -450,7 +465,6 @@
     return {
       source,
       capturedAt: new Date().toISOString(),
-      updateIntervalMinutes: 10,
       url: location.href,
       balance: balance ? { value: balance.value, currency: 'CNY' } : null,
       date: parsed?.date || null,
@@ -474,8 +488,9 @@
   }
 
   let collecting = false;
-  async function collectAndSignal() {
+  async function collectAndSignal(options = {}) {
     if (collecting) return;
+    applySyncOptions(options);
     collecting = true;
     try {
       if (source === 'volcengine' && !volcengineUsageReady()) {
@@ -522,7 +537,7 @@
     toolbar();
     setToolbarStatus('正在读取当前页面…');
     try {
-      await originalCollectAndSignal();
+      await originalCollectAndSignal(options);
       if (source === 'volcengine' && !volcengineUsageReady()) return;
       sessionStorage.setItem('__token_on_kindle_synced_view', location.href);
       setToolbarStatus(options.manual ? '已同步至 Kindle' : '后台同步完成', 'success');
@@ -537,7 +552,7 @@
   const observer = new MutationObserver(() => {
     toolbar();
     if (source !== 'volcengine' || !volcengineUsageReady()) return;
-    const marker = location.href + '|' + (document.body?.innerText?.length || 0);
+    const marker = location.href;
     if (marker === autoCapturedView) return;
     autoCapturedView = marker;
     setToolbarStatus('已识别企业版 AFP 用量视图，可点击同步');
@@ -553,7 +568,6 @@
     } else if (volcengineUsageReady()) {
       setTimeout(() => collectAndSignal({ automatic: true }), 1200);
     }
-    setInterval(() => collectAndSignal({ automatic: true }), UPDATE_MS);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

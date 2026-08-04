@@ -252,11 +252,42 @@ function modelMetrics(deepseek, key) {
   };
 }
 
+export function balancedVerticalFlow(height, blockHeights, options = {}) {
+  const padding = options.padding ?? 8;
+  const minGap = options.minGap ?? 4;
+  const maxGap = options.maxGap ?? 18;
+  const blocks = blockHeights.map(value => Math.max(0, Number(value) || 0));
+  const gapCount = Math.max(0, blocks.length - 1);
+  const innerHeight = Math.max(0, height - padding * 2);
+  const blockTotal = blocks.reduce((sum, value) => sum + value, 0);
+  const rawGap = gapCount ? (innerHeight - blockTotal) / gapCount : 0;
+  const gap = gapCount ? clamp(rawGap, minGap, maxGap) : 0;
+  const contentHeight = blockTotal + gap * gapCount;
+  const offset = padding + Math.max(0, (innerHeight - contentHeight) / 2);
+  let cursor = offset;
+  const positions = blocks.map(blockHeight => {
+    const position = cursor;
+    cursor += blockHeight + gap;
+    return position;
+  });
+  return { positions, gap, offset, contentHeight, innerHeight };
+}
+
+export function deepSeekLayoutPlan(boxHeight) {
+  const bodyHeight = Math.max(0, boxHeight - 44);
+  const summaryHeight = clamp(Math.round(bodyHeight * 0.34), 84, 112);
+  const sectionGap = clamp(Math.round(bodyHeight * 0.03), 6, 12);
+  const modelHeight = Math.max(146, bodyHeight - summaryHeight - sectionGap);
+  return { bodyHeight, summaryHeight, sectionGap, modelHeight };
+}
+
 function drawMetricGrid(ctx, metrics, x, y, width, height, columns = 3) {
   const rows = Math.ceil(metrics.length / columns);
   const cellWidth = width / columns;
   const cellHeight = height / rows;
-  const compact = height <= 90;
+  const compact = cellHeight < 47;
+  const labelSize = compact ? 8.5 : 10.5;
+  const valueSize = compact ? 14.5 : 19;
   metrics.forEach(([label, value], index) => {
     const column = index % columns;
     const row = Math.floor(index / columns);
@@ -265,20 +296,37 @@ function drawMetricGrid(ctx, metrics, x, y, width, height, columns = 3) {
     const center = left + cellWidth / 2;
     if (column > 0) drawLine(ctx, left, top + 5, left, top + cellHeight - 5, 1, PALETTE.dark);
     if (row > 0) drawLine(ctx, left + 5, top, left + cellWidth - 5, top, 1, PALETTE.dark);
-    drawText(ctx, label, center, top + (compact ? 4 : 7), compact ? 8.5 : 10.5, 650, 'center', PALETTE.dark);
-    drawText(ctx, value, center, top + (compact ? 17 : 25), compact ? 14.5 : 19, 820, 'center');
+    const flow = balancedVerticalFlow(cellHeight, [labelSize + 2, valueSize + 3], {
+      padding: compact ? 3 : 5,
+      minGap: 2,
+      maxGap: 7
+    });
+    drawText(ctx, label, center, top + flow.positions[0], labelSize, 650, 'center', PALETTE.dark);
+    drawText(ctx, value, center, top + flow.positions[1], valueSize, 820, 'center');
   });
 }
 
 function drawModelCard(ctx, model, title, x, y, width, height) {
   drawBox(ctx, x, y, width, height, PALETTE.white, PALETTE.dark, 1.5);
-  drawText(ctx, title, x + 10, y + 8, 11, 800);
-  drawText(ctx, formatMoney(model.cost), x + width - 10, y + 7, 12, 800, 'right');
-  drawText(ctx, formatTokens(model.tokens), x + 10, y + 27, height >= 190 ? 25 : 21, 850);
-  drawText(ctx, '总 TOKEN', x + 10, y + (height >= 190 ? 55 : 51), 8, 650, 'left', PALETTE.dark);
-  const dividerY = y + (height >= 190 ? 70 : 64);
-  drawLine(ctx, x + 10, dividerY, x + width - 10, dividerY, 1, PALETTE.dark);
+  const compact = height < 184;
+  const headerHeight = compact ? 15 : 17;
+  const totalHeight = compact ? 38 : 46;
+  const breakdownHeight = compact ? 39 : 45;
+  const cacheHeight = compact ? 24 : 27;
+  const flow = balancedVerticalFlow(height, [headerHeight, totalHeight, breakdownHeight, cacheHeight], {
+    padding: compact ? 7 : 9,
+    minGap: compact ? 4 : 6,
+    maxGap: compact ? 11 : 18
+  });
+  const [headerTop, totalTop, breakdownTop, cacheTop] = flow.positions.map(position => y + position);
 
+  drawText(ctx, title, x + 10, headerTop, compact ? 10.5 : 11, 800);
+  drawText(ctx, formatMoney(model.cost), x + width - 10, headerTop - 1, compact ? 11.5 : 12, 800, 'right');
+
+  drawText(ctx, formatTokens(model.tokens), x + 10, totalTop, compact ? 21 : 25, 850);
+  drawText(ctx, '总 TOKEN', x + 10, totalTop + (compact ? 25 : 30), 8, 650, 'left', PALETTE.dark);
+
+  drawLine(ctx, x + 10, breakdownTop - Math.max(2, flow.gap / 2), x + width - 10, breakdownTop - Math.max(2, flow.gap / 2), 1, PALETTE.dark);
   const parts = [
     ['未缓存', model.cacheMissTokens],
     ['已缓存', model.cacheHitTokens],
@@ -287,18 +335,22 @@ function drawModelCard(ctx, model, title, x, y, width, height) {
   const innerWidth = width - 20;
   parts.forEach(([label, value], index) => {
     const center = x + 10 + (index + 0.5) * (innerWidth / 3);
-    drawText(ctx, label, center, dividerY + 7, 8, 650, 'center', PALETTE.dark);
-    drawText(ctx, formatTokens(value), center, dividerY + 22, height >= 190 ? 13 : 11.5, 800, 'center');
+    const partFlow = balancedVerticalFlow(breakdownHeight, [10, compact ? 14 : 16], {
+      padding: 1,
+      minGap: 2,
+      maxGap: 5
+    });
+    drawText(ctx, label, center, breakdownTop + partFlow.positions[0], 8, 650, 'center', PALETTE.dark);
+    drawText(ctx, formatTokens(value), center, breakdownTop + partFlow.positions[1], compact ? 11.5 : 13, 800, 'center');
     if (index > 0) {
       const lineX = x + 10 + index * (innerWidth / 3);
-      drawLine(ctx, lineX, dividerY + 7, lineX, dividerY + 42, 1, PALETTE.light);
+      drawLine(ctx, lineX, breakdownTop + 2, lineX, breakdownTop + breakdownHeight - 2, 1, PALETTE.light);
     }
   });
 
-  const cacheLabelY = y + height - 29;
-  drawText(ctx, '缓存率', x + 10, cacheLabelY, 9, 650, 'left', PALETTE.dark);
-  drawText(ctx, formatPercent(model.cacheRate), x + width - 10, cacheLabelY, 9.5, 750, 'right', PALETTE.dark);
-  drawBar(ctx, x + 10, y + height - 13, width - 20, 7, cacheRateToRatio(model.cacheRate));
+  drawText(ctx, '缓存率', x + 10, cacheTop, 9, 650, 'left', PALETTE.dark);
+  drawText(ctx, formatPercent(model.cacheRate), x + width - 10, cacheTop, 9.5, 750, 'right', PALETTE.dark);
+  drawBar(ctx, x + 10, cacheTop + cacheHeight - 8, width - 20, 7, cacheRateToRatio(model.cacheRate));
 }
 
 function drawDeepSeek(ctx, deepseek = {}, box) {
@@ -317,15 +369,13 @@ function drawDeepSeek(ctx, deepseek = {}, box) {
     ['本月费用', formatMoney(monthly.monthlyCost)],
     ['本月 Token', formatTokens(monthly.monthlyTokens)]
   ];
+  const plan = deepSeekLayoutPlan(box.height);
   const bodyY = box.y + 38;
-  const bodyHeight = box.height - 44;
-  const summaryHeight = Math.min(112, Math.max(82, Math.round(bodyHeight * 0.24)));
-  drawMetricGrid(ctx, metrics, box.x + 8, bodyY, box.width - 16, summaryHeight, 3);
-  const modelY = bodyY + summaryHeight + 6;
-  const modelHeight = bodyHeight - summaryHeight - 6;
+  drawMetricGrid(ctx, metrics, box.x + 8, bodyY, box.width - 16, plan.summaryHeight, 3);
+  const modelY = bodyY + plan.summaryHeight + plan.sectionGap;
   const half = (box.width - 24) / 2;
-  drawModelCard(ctx, flash, 'V4 FLASH', box.x + 8, modelY, half, modelHeight);
-  drawModelCard(ctx, pro, 'V4 PRO', box.x + 16 + half, modelY, half, modelHeight);
+  drawModelCard(ctx, flash, 'V4 FLASH', box.x + 8, modelY, half, plan.modelHeight);
+  drawModelCard(ctx, pro, 'V4 PRO', box.x + 16 + half, modelY, half, plan.modelHeight);
 }
 
 function normalizeVolcengineWindows(volcengine = {}) {
@@ -375,7 +425,7 @@ function drawHeader(ctx, sources) {
 function drawFooter(ctx, state, sources) {
   drawLine(ctx, 28, 676, 572, 676, 1.5);
   const labels = { codex: 'C', deepseek: 'D', volcengine: 'V' };
-  const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt)}`).join('  ·  ');
+  const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.syncRequestedAt || state[source]?.capturedAt)}`).join('  ·  ');
   drawText(ctx, text, 300, 686, 11, 650, 'center', PALETTE.dark);
   ctx.fillStyle = PALETTE.unlock;
   ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight);

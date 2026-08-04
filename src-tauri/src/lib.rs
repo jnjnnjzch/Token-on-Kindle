@@ -276,35 +276,45 @@ async fn open_source(app: AppHandle, source: String) -> Result<(), String> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn background_refresh_window(window: &WebviewWindow, reload_page: bool) -> Result<(), String> {
+fn background_refresh_window(
+    window: &WebviewWindow,
+    reload_page: bool,
+    refresh_minutes: u64,
+    sync_requested_at: &str,
+) -> Result<(), String> {
+    let sync_script = format!(
+        "window.__TOKEN_ON_KINDLE_SYNC__?.({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \"{sync_requested_at}\" }})"
+    );
     if window.is_focused().unwrap_or(false) {
-        return window
-            .eval("window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })")
-            .map_err(|error| error.to_string());
+        return window.eval(&sync_script).map_err(|error| error.to_string());
     }
 
     let _ = window.hide();
-    let script = if reload_page {
-        "window.blur(); location.reload()"
+    if reload_page {
+        let reload_script = format!(
+            "sessionStorage.setItem('__token_on_kindle_refresh_minutes', '{refresh_minutes}');sessionStorage.setItem('__token_on_kindle_sync_requested_at', '{sync_requested_at}');window.blur();location.reload()"
+        );
+        window.eval(&reload_script).map_err(|error| error.to_string())?;
     } else {
-        "window.blur(); window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true })"
-    };
-    window.eval(script).map_err(|error| error.to_string())?;
+        window.eval(&sync_script).map_err(|error| error.to_string())?;
+    }
     let _ = window.hide();
     Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn reload_sources(app: &AppHandle) -> Result<(), String> {
+    let refresh_minutes = app.state::<AppState>().refresh.get();
+    let sync_requested_at = timestamp();
     let mut refreshed = 0;
     for label in ["codex-login", "deepseek-login"] {
         if let Some(window) = app.get_webview_window(label) {
-            background_refresh_window(&window, true)?;
+            background_refresh_window(&window, true, refresh_minutes, &sync_requested_at)?;
             refreshed += 1;
         }
     }
     if let Some(window) = app.get_webview_window("volcengine-login") {
-        background_refresh_window(&window, false)?;
+        background_refresh_window(&window, false, refresh_minutes, &sync_requested_at)?;
         refreshed += 1;
     }
     if refreshed == 0 {
