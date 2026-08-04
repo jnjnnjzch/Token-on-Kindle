@@ -5,3 +5,4 @@
 - Main-branch version changes build all release platforms and publish the matching tag.
 - The main-branch cleanup job removes merged work branches and legacy workflow-run history.
 - One-time migration workflows and payload files must be removed before a pull request is merged.
+- Closed or squash-merged work branches are aligned to the current main commit before cleanup.
