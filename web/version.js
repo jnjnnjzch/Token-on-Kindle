@@ -1,2 +1,2 @@
-// Generated from Cargo package metadata. Do not edit manually.
-export const APP_VERSION = "0.8.0";
+// Generated from the release tag / Cargo package version. Do not edit manually.
+export const APP_VERSION = "0.8.1";
