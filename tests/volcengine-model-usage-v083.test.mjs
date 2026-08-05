@@ -61,27 +61,31 @@ test('model text layout keeps every model at every card height', () => {
 
 test('three-source compact Volcengine card shows six models as two columns by three rows', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [132, 294, 138]);
-  const compact = volcengineModelLayoutPlan(138, 6);
+  assert.deepEqual(boxes.map(box => box.height), [132, 294, 150]);
+  const compact = volcengineModelLayoutPlan(150, 6);
   assert.equal(compact.columns, 2);
   assert.equal(compact.rows, 3);
   assert.equal(compact.visibleCount, 6);
   assert.equal(compact.overflowCount, 0);
   assert.equal(boxes.at(-1).y + boxes.at(-1).height, 666);
   assert.match(renderer, /TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST/);
-  assert.match(renderer, /全部显示/);
+  assert.match(renderer, /今日模型 TOKEN/);
+  assert.match(renderer, /今日调用/);
+  assert.match(renderer, /formatTokens\(model\.latestTokens\)/);
   assert.doesNotMatch(renderer, /其余 \$\{entry\.count\} 个模型/);
   assert.doesNotMatch(renderer, /drawVolcengineModelCell\(ctx, entry\.model/);
 });
 
-test('renderer normalizes and sorts arbitrary Volcengine model counts', () => {
+test('renderer keeps only models with latest token usage and sorts by today tokens', () => {
   const models = normalizeVolcengineModels({ models: [
-    { name: 'B', inputTokens: 10, outputTokens: 15 },
-    { name: 'A', totalTokens: 100 },
-    { name: 'C', totalTokens: 50 }
+    { name: '本月有量但今日无调用', totalTokens: 9000, latestTokens: 0 },
+    { name: '今日模型 B', totalTokens: 100, latestTokens: 15 },
+    { name: '今日模型 A', totalTokens: 50, latestTokens: 80 },
+    { name: '缺少今日点', totalTokens: 700 }
   ] });
-  assert.deepEqual(models.map(model => model.name), ['A', 'C', 'B']);
-  assert.equal(models[2].totalTokens, 25);
+  assert.deepEqual(models.map(model => model.name), ['今日模型 A', '今日模型 B']);
+  assert.deepEqual(models.map(model => model.latestTokens), [80, 15]);
+  assert.equal(models[0].totalTokens, 50);
 });
 
 test('packaged extractor disables legacy Volcengine interception before reading ReactECharts', () => {
