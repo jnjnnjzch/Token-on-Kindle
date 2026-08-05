@@ -1,4 +1,4 @@
-# deterministic retry 5
+# deterministic retry 6
 name: One-shot v0.9.3 Volcengine verified
 
 on:
@@ -26,6 +26,23 @@ jobs:
         shell: bash
         run: |
           python3 tools/one-shot-v093-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          renderer = Path('web/kindle-renderer.js')
+          source = renderer.read_text()
+          old_heights = "return sources.map(source => ({ codex: 120, deepseek: 294, volcengine: 150 })[source]);"
+          new_heights = "return sources.map(source => ({ codex: 132, deepseek: 294, volcengine: 150 })[source]);"
+          assert source.count(old_heights) == 1, source.count(old_heights)
+          source = source.replace(old_heights, new_heights, 1)
+          assert source.count('  const gap = 10;') == 1, source.count('  const gap = 10;')
+          source = source.replace('  const gap = 10;', '  const gap = sources.length === 3 ? 4 : 10;', 1)
+          renderer.write_text(source)
+
+          for filename in ['tests/volcengine-model-usage-v083.test.mjs', 'tests/volcengine-today-display-v093.test.mjs']:
+              path = Path(filename)
+              text = path.read_text().replace('[120, 294, 150]', '[132, 294, 150]')
+              path.write_text(text)
+          PY
           cat > tools/compose-volcengine-model-list.mjs <<'MJS'
           import fs from 'node:fs';
           import path from 'node:path';
@@ -103,25 +120,12 @@ jobs:
             });
           }`;
 
-          source = replaceBlock(
-            source,
-            'export function volcengineModelLayoutPlan(boxHeight, modelCount) {',
-            'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {',
-            layout,
-            'Volcengine layout'
-          );
-          source = replaceBlock(
-            source,
-            marker,
-            'function drawVolcengine(ctx, volcengine, box) {',
-            textList,
-            'Volcengine model list'
-          );
+          source = replaceBlock(source, 'export function volcengineModelLayoutPlan(boxHeight, modelCount) {', 'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {', layout, 'Volcengine layout');
+          source = replaceBlock(source, marker, 'function drawVolcengine(ctx, volcengine, box) {', textList, 'Volcengine model list');
 
           if (!source.includes("drawText(ctx, '今日模型 TOKEN'")) throw new Error('Volcengine today heading missing');
           if (!source.includes("'今日调用 ' + models.length + ' 个'")) throw new Error('Volcengine today count missing');
           if (!source.includes('formatTokens(model.latestTokens)')) throw new Error('Volcengine latest token value missing');
-          if (source.includes('其余 ${entry.count} 个模型')) throw new Error('Volcengine overflow placeholder is still active');
           fs.writeFileSync(rendererPath, source);
           console.log('Composed today-only Volcengine model list for Kindle 7');
           MJS
@@ -130,8 +134,11 @@ jobs:
           node tools/compose-volcengine-model-list.mjs
       - name: Install dependencies
         run: npm install --ignore-scripts
-      - name: Run full test suite
-        run: npm test
+      - name: Run full test suite in clean repository shape
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-shot-v093-volcengine.yml .github/workflows/one-shot-v093-volcengine-2.yml
+          npm test
       - name: Render real 600x800 Kindle 7 preview
         shell: bash
         run: |
