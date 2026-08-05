@@ -1,0 +1,151 @@
+name: One-shot v0.9.4 preserve Volcengine view
+
+on:
+  push:
+    branches:
+      - agent/v0.9.4-preserve-volcengine-view
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v0.9.4-preserve-volcengine-view
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore v0.8.2 source-specific refresh behavior
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src-tauri/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''#[cfg(not(any(target_os = "android", target_os = "ios")))]
+          fn reload_sources(app: &AppHandle) -> Result<(), String> {
+              let mut refreshed = 0;
+              for label in ["codex-login", "deepseek-login", "volcengine-login"] {
+                  if let Some(window) = app.get_webview_window(label) {
+                      window
+                          .eval("location.reload()")
+                          .map_err(|error| error.to_string())?;
+                      refreshed += 1;
+                  }
+              }
+              if refreshed == 0 {
+                  return Err("没有可刷新的后台窗口".into());
+              }
+              Ok(())
+          }
+          '''
+          new = '''#[cfg(not(any(target_os = "android", target_os = "ios")))]
+          fn background_refresh_window(
+              window: &WebviewWindow,
+              reload_page: bool,
+              refresh_minutes: u64,
+              sync_requested_at: &str,
+          ) -> Result<(), String> {
+              let sync_script = format!(
+                  "window.__TOKEN_ON_KINDLE_SYNC__?.({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \\\"{sync_requested_at}\\\" }})"
+              );
+              if window.is_focused().unwrap_or(false) {
+                  return window.eval(&sync_script).map_err(|error| error.to_string());
+              }
+
+              let _ = window.hide();
+              if reload_page {
+                  let reload_script = format!(
+                      "sessionStorage.setItem('__token_on_kindle_refresh_minutes', '{refresh_minutes}');sessionStorage.setItem('__token_on_kindle_sync_requested_at', '{sync_requested_at}');window.blur();location.reload()"
+                  );
+                  window.eval(&reload_script).map_err(|error| error.to_string())?;
+              } else {
+                  window.eval(&sync_script).map_err(|error| error.to_string())?;
+              }
+              let _ = window.hide();
+              Ok(())
+          }
+
+          #[cfg(not(any(target_os = "android", target_os = "ios")))]
+          fn reload_sources(app: &AppHandle) -> Result<(), String> {
+              let refresh_minutes = app.state::<AppState>().refresh.get();
+              let sync_requested_at = timestamp();
+              let mut refreshed = 0;
+              for label in ["codex-login", "deepseek-login"] {
+                  if let Some(window) = app.get_webview_window(label) {
+                      background_refresh_window(&window, true, refresh_minutes, &sync_requested_at)?;
+                      refreshed += 1;
+                  }
+              }
+              if let Some(window) = app.get_webview_window("volcengine-login") {
+                  background_refresh_window(&window, false, refresh_minutes, &sync_requested_at)?;
+                  refreshed += 1;
+              }
+              if refreshed == 0 {
+                  return Err("没有可刷新的后台窗口".into());
+              }
+              Ok(())
+          }
+          '''
+          if old not in text:
+              raise SystemExit('current reload_sources block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('tests/volcengine-sticky-refresh-v094.test.mjs')
+          test.write_text('''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+
+          const rust = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+          const extractor = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
+
+          test('Volcengine opens on the Agent Plan Enterprise route', () => {
+            assert.match(rust, /const VOLCENGINE_URL: &str = "https:\/\/console\.volcengine\.com\/ark\/region:cn-beijing\/subscription\/agent-plan-enterprise";/);
+          });
+
+          test('desktop refresh preserves the selected Volcengine SPA view', () => {
+            assert.match(rust, /for label in \["codex-login", "deepseek-login"\]/);
+            assert.match(rust, /background_refresh_window\(&window, true, refresh_minutes, &sync_requested_at\)\?/);
+            assert.match(rust, /get_webview_window\("volcengine-login"\)/);
+            assert.match(rust, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)\?/);
+
+            const volcengineBlock = rust.slice(
+              rust.indexOf('if let Some(window) = app.get_webview_window("volcengine-login")'),
+              rust.indexOf('if refreshed == 0', rust.indexOf('if let Some(window) = app.get_webview_window("volcengine-login")'))
+            );
+            assert.ok(volcengineBlock.length > 0);
+            assert.doesNotMatch(volcengineBlock, /location\.reload\(\)/);
+          });
+
+          test('the extractor still exposes an in-page sync hook', () => {
+            assert.match(extractor, /window\.__TOKEN_ON_KINDLE_SYNC__\s*=\s*/);
+          });
+          ''', encoding='utf-8')
+          PY
+
+          node tools/sync-version.mjs v0.9.4
+          rm .github/workflows/one-shot-v094-preserve-volcengine.yml
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run complete JavaScript suite
+        run: npm test
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/lib.rs package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json web/version.js tests/volcengine-sticky-refresh-v094.test.mjs .github/workflows/one-shot-v094-preserve-volcengine.yml
+          git commit -m "v0.9.4: preserve the selected Volcengine enterprise view"
+          git push origin HEAD:agent/v0.9.4-preserve-volcengine-view
