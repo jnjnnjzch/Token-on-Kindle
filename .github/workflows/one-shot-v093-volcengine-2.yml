@@ -1,0 +1,97 @@
+name: One-shot v0.9.3 Volcengine verified
+
+on:
+  push:
+    branches:
+      - agent/v0.9.3-volcengine-today-kindle7
+    paths:
+      - .github/workflows/one-shot-v093-volcengine-2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/v0.9.3-volcengine-today-kindle7
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply focused patch
+        run: |
+          python3 tools/one-shot-v093-patch.py
+          node tools/sync-version.mjs 0.9.3
+          node tools/compose-volcengine-model-list.mjs
+          node tools/compose-volcengine-model-list.mjs
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Run full test suite
+        run: npm test
+      - name: Render real 600x800 Kindle 7 preview
+        shell: bash
+        run: |
+          mkdir -p .tmp-preview
+          cat > .tmp-preview/index.html <<'HTML'
+          <!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;width:600px;height:800px;overflow:hidden;background:white}canvas{display:block}</style></head><body>
+          <canvas id="preview" width="600" height="800"></canvas>
+          <script type="module">
+          import { renderKindleDashboard } from '../web/kindle-renderer.js';
+          const ctx = document.querySelector('#preview').getContext('2d');
+          renderKindleDashboard(ctx, {
+            displaySources: { codex: true, deepseek: true, volcengine: true },
+            codex: { capturedAt: new Date().toISOString(), quotas: [
+              { id: 'weekly', remainingPercent: 72, usedPercent: 28, resetText: '5天后重置' },
+              { id: '5h', remainingPercent: 91, usedPercent: 9, resetText: '3小时后重置' }
+            ] },
+            deepseek: { balance: 86.4, todayCost: 3.21, todayTokens: 2380000, account: { cumulativeCost: 52.5, monthlyCost: 18.2, monthlyTokens: 14500000 }, models: {
+              flash: { tokens: 950000, cost: 0.88, cacheMissTokens: 180000, cacheHitTokens: 690000, outputTokens: 80000, cacheRate: 79.3 },
+              pro: { tokens: 1430000, cost: 2.33, cacheMissTokens: 310000, cacheHitTokens: 960000, outputTokens: 160000, cacheRate: 75.6 }
+            } },
+            volcengine: { windows: [
+              { id: '5h', label: '近5小时用量', used: 320, total: 4000, usedPercent: 8 },
+              { id: 'weekly', label: '近一周用量', used: 2410, total: 14000, usedPercent: 17.2 },
+              { id: 'monthly', label: '近一月用量', used: 6830, total: 42000, usedPercent: 16.3 }
+            ], models: [
+              { name: 'deepseek-v4-pro', totalTokens: 8500000, latestTokens: 680000 },
+              { name: 'doubao-seed-1.6', totalTokens: 6200000, latestTokens: 410000 },
+              { name: 'kimi-k2.6', totalTokens: 5400000, latestTokens: 225000 },
+              { name: 'glm-5.2', totalTokens: 3100000, latestTokens: 88000 },
+              { name: 'monthly-only-hidden', totalTokens: 9900000, latestTokens: 0 }
+            ] }
+          });
+          </script></body></html>
+          HTML
+          python3 -m http.server 8765 >/tmp/token-preview-server.log 2>&1 &
+          server=$!
+          trap 'kill $server || true' EXIT
+          sleep 2
+          browser="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$browser"
+          "$browser" --headless --disable-gpu --no-sandbox --hide-scrollbars --window-size=600,800 --screenshot="$PWD/.tmp-preview/kindle7-v093.png" http://127.0.0.1:8765/.tmp-preview/index.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          image = Path('.tmp-preview/kindle7-v093.png').read_bytes()
+          assert image[:8] == b'\x89PNG\r\n\x1a\n'
+          width, height = struct.unpack('>II', image[16:24])
+          assert (width, height) == (600, 800), (width, height)
+          assert len(image) > 12000, len(image)
+          print(f'preview={width}x{height}, bytes={len(image)}')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kindle7-volcengine-v093-preview
+          path: .tmp-preview/kindle7-v093.png
+      - name: Commit verified product changes
+        shell: bash
+        run: |
+          rm -rf .tmp-preview
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json web/version.js web/kindle-renderer.js tools/compose-volcengine-model-list.mjs tests/volcengine-model-usage-v083.test.mjs tests/volcengine-today-display-v093.test.mjs
+          git commit -m "v0.9.3: show today's Volcengine models clearly"
+          git push origin HEAD:agent/v0.9.3-volcengine-today-kindle7
