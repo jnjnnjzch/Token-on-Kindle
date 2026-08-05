@@ -92,9 +92,8 @@ test('packaged extractor disables legacy Volcengine interception before reading 
   for (const marker of ['模型调用明细', '__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__', '__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__', 'react-component']) {
     assert.match(compiled, new RegExp(marker));
   }
-  const guard = compiled.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
-  assert.ok(guard >= 0);
-  assert.doesNotMatch(compiled, /\n\s*installVolcengineNetworkCapture\(\);/);
+  assert.doesNotMatch(compiled, /installVolcengineNetworkCapture/);
+  assert.doesNotMatch(compiled, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
   assert.match(compiled, /source = host === 'chatgpt\.com'.*volcengine/s);
   assert.doesNotMatch(compiled, /setInterval\(\(\) => location\.reload\(\), UPDATE_MS\)/);
   assert.doesNotMatch(base, /TOKEN-ON-KINDLE v0\.8\.4 DIRECT CHART BUILD/);

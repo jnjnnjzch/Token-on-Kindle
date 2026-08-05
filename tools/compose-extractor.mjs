@@ -102,10 +102,6 @@ const signalCompactor = `(() => {
 })();`;
 
 let canonical = lf(await readFile(baseUrl, 'utf8'));
-canonical = canonical.replace(
-  /\n\s*installVolcengineNetworkCapture\(\);/g,
-  '\n  // Volcengine reads rendered ReactECharts state; request interception stays disabled.'
-);
 canonical = canonical.replace(`  window.addEventListener('beforeunload', () => {
     if (!document.hasFocus()) {
       try { window.close(); } catch { /* native window guard */ }
@@ -194,7 +190,6 @@ const deepseekModules = [
 ].join('\n');
 const volcengineModules = `(() => {
   if (!location.hostname.endsWith('volcengine.com')) return;
-  window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
 ${volcengineParser}
   window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__ = parseVolcengineEchartsOption;
 ${volcengineAccess}
@@ -212,7 +207,7 @@ if (!output.includes('__TOKEN_ON_KINDLE_ACTION__:dashboard')) throw new Error('n
 if (output.includes('new MutationObserver')) throw new Error('continuous DOM observer remains active');
 if (output.includes("window.addEventListener('beforeunload'")) throw new Error('close-on-reload handler remains active');
 if (output.includes('hide.onclick = () => window.close()')) throw new Error('source hide button still closes the webview');
-if (/\n\s*installVolcengineNetworkCapture\(\);/.test(output)) throw new Error('legacy Volcengine interception remains active');
+if (output.includes('installVolcengineNetworkCapture') || output.includes('__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__')) throw new Error('legacy Volcengine response cache remains active');
 const current = await readFile(extractorUrl, 'utf8').catch(() => '');
 if (lf(current) !== output) await writeFile(extractorUrl, output);
 console.log('Composed stable compact Codex, DeepSeek, and Volcengine readers');
