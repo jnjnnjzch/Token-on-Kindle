@@ -4,19 +4,16 @@ import fs from 'node:fs';
 
 const app = fs.readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
 const desktop = fs.readFileSync(new URL('../web/desktop.js', import.meta.url), 'utf8');
-const worker = fs.readFileSync(new URL('../web/png-worker.js', import.meta.url), 'utf8');
 const compose = fs.readFileSync(new URL('../tools/compose-extractor.mjs', import.meta.url), 'utf8');
 const extractor = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
 
-test('PNG compression runs off the control-center thread', () => {
-  assert.match(app, /new Worker\(new URL\('\.\/png-worker\.js'/);
+test('PNG generation uses the proven v0.6.2 direct encoder with single-flight publishing', () => {
+  assert.doesNotMatch(app, /new Worker/);
   assert.match(app, /let publishInFlight = null/);
   assert.match(app, /let publishQueued = false/);
   assert.match(app, /function schedulePublish/);
+  assert.match(app, /encodeGrayscalePng\(profile\.width, profile\.height, rgbaToGrayscale\(rgba\)\)/);
   assert.doesNotMatch(app, /requestAnimationFrame|publishDirty|publishPromise/);
-  assert.match(worker, /encodeGrayscalePng/);
-  assert.match(worker, /rgbaToGrayscale/);
-  assert.match(worker, /postMessage\(\{ id, png: png\.buffer \}/);
 });
 
 test('manual refresh returns to the stable single-flight flow', () => {
