@@ -21,7 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Restore v0.8.2 source-specific refresh behavior
         shell: bash
@@ -136,7 +135,7 @@ jobs:
           rm .github/workflows/one-shot-v094-preserve-volcengine.yml
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Run complete JavaScript suite
         run: npm test
