@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-test-commit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +49,13 @@ jobs:
 
       - name: Run complete JavaScript test suite
         run: npm test
+
+      - name: Install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Validate Rust formatting and compile
         run: |
