@@ -410,18 +410,21 @@ export function normalizeVolcengineModels(volcengine = {}) {
 
 export function volcengineModelLayoutPlan(boxHeight, modelCount) {
   const count = Math.max(0, Number(modelCount) || 0);
-  if (!count) return { hasModels: false, quotaHeight: Math.max(0, boxHeight - 45), columns: 0, rows: 0, capacity: 0, visibleCount: 0, overflowCount: 0 };
+  if (!count) return { hasModels: false, quotaHeight: Math.max(0, boxHeight - 45), columns: 0, rows: 0, capacity: 0, visibleCount: 0, overflowCount: 0, rowHeight: 0, fontSize: 0 };
   const compact = boxHeight < 210;
   const medium = boxHeight < 340;
   const quotaHeight = compact ? 46 : medium ? 62 : 96;
   const sectionGap = compact ? 4 : medium ? 6 : 9;
-  const modelHeaderHeight = compact ? 12 : 16;
+  const modelHeaderHeight = compact ? 11 : 15;
   const modelAreaHeight = Math.max(24, boxHeight - 39 - quotaHeight - sectionGap - 8);
-  const columns = count === 1 ? 1 : count <= 4 ? 2 : (boxHeight >= 240 ? 3 : 2);
-  const minimumCellHeight = compact ? 24 : medium ? 36 : 50;
-  const rows = Math.max(1, Math.floor((modelAreaHeight - modelHeaderHeight) / minimumCellHeight));
-  const capacity = Math.max(1, rows * columns);
-  const visibleCount = count <= capacity ? count : Math.max(0, capacity - 1);
+  const columns = count === 1
+    ? 1
+    : compact
+      ? (count <= 3 ? 1 : count <= 10 ? 2 : 3)
+      : (count <= 4 ? 2 : count <= 9 ? 3 : 4);
+  const rows = Math.max(1, Math.ceil(count / columns));
+  const rowHeight = Math.max(7, (modelAreaHeight - modelHeaderHeight) / rows);
+  const fontSize = clamp(rowHeight - 1, 7, compact ? 9 : 11);
   return {
     hasModels: true,
     compact,
@@ -432,9 +435,11 @@ export function volcengineModelLayoutPlan(boxHeight, modelCount) {
     modelAreaHeight,
     columns,
     rows,
-    capacity,
-    visibleCount,
-    overflowCount: Math.max(0, count - visibleCount)
+    rowHeight,
+    fontSize,
+    capacity: count,
+    visibleCount: count,
+    overflowCount: 0
   };
 }
 
@@ -475,28 +480,27 @@ function drawVolcengineModelCell(ctx, model, x, y, width, height, compact) {
   }
 }
 
+/* TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST */
 function drawVolcengineModels(ctx, models, box, y, height, plan) {
-  drawText(ctx, '模型 TOKEN', box.x + 12, y, plan.compact ? 9 : 10.5, 800, 'left', PALETTE.dark);
-  drawText(ctx, `${models.length} 个模型`, box.x + box.width - 12, y, plan.compact ? 8.5 : 9.5, 650, 'right', PALETTE.dark);
+  drawText(ctx, '模型 TOKEN', box.x + 12, y, plan.compact ? 8.5 : 10.5, 800, 'left', PALETTE.dark);
+  drawText(ctx, `${models.length} 个模型 · 全部显示`, box.x + box.width - 12, y, plan.compact ? 8 : 9.5, 650, 'right', PALETTE.dark);
   const gridY = y + plan.modelHeaderHeight;
-  const gap = plan.compact ? 3 : 5;
   const gridWidth = box.width - 24;
-  const cellWidth = (gridWidth - gap * (plan.columns - 1)) / plan.columns;
-  const rowCount = Math.max(1, Math.ceil(Math.min(plan.capacity, plan.visibleCount + (plan.overflowCount ? 1 : 0)) / plan.columns));
-  const cellHeight = Math.max(20, (height - plan.modelHeaderHeight - gap * (rowCount - 1)) / rowCount);
-  const entries = models.slice(0, plan.visibleCount).map(model => ({ type: 'model', model }));
-  if (plan.overflowCount) entries.push({ type: 'overflow', count: plan.overflowCount });
-  entries.forEach((entry, index) => {
+  const columnGap = plan.compact ? 12 : 18;
+  const columnWidth = (gridWidth - columnGap * (plan.columns - 1)) / plan.columns;
+  const nameSize = plan.fontSize;
+  const tokenSize = Math.min(plan.fontSize + 0.5, plan.compact ? 9.5 : 11.5);
+  const tokenReserve = plan.compact ? 52 : 66;
+  const maxNameLength = Math.max(7, Math.floor((columnWidth - tokenReserve) / Math.max(4.5, nameSize * 0.55)));
+
+  models.forEach((model, index) => {
     const column = index % plan.columns;
     const row = Math.floor(index / plan.columns);
-    const x = box.x + 12 + column * (cellWidth + gap);
-    const cellY = gridY + row * (cellHeight + gap);
-    if (entry.type === 'model') {
-      drawVolcengineModelCell(ctx, entry.model, x, cellY, cellWidth, cellHeight, plan.compact || cellHeight < 34);
-    } else {
-      drawBox(ctx, x, cellY, cellWidth, cellHeight, PALETTE.white, PALETTE.dark, 1);
-      drawText(ctx, `其余 ${entry.count} 个模型`, x + cellWidth / 2, cellY + Math.max(4, (cellHeight - 11) / 2), plan.compact ? 8.5 : 10, 750, 'center', PALETTE.dark);
-    }
+    const left = box.x + 12 + column * (columnWidth + columnGap);
+    const top = gridY + row * plan.rowHeight;
+    const textY = top + Math.max(0, (plan.rowHeight - nameSize) / 2);
+    drawText(ctx, shorten(model.name, maxNameLength), left, textY, nameSize, 700, 'left', PALETTE.dark);
+    drawText(ctx, formatTokens(model.totalTokens), left + columnWidth, textY - 0.3, tokenSize, 850, 'right');
   });
 }
 
