@@ -1,4 +1,4 @@
-# deterministic retry 2
+# deterministic retry 3
 name: One-shot v0.9.3 Volcengine verified
 
 on:
@@ -25,6 +25,15 @@ jobs:
       - name: Apply focused patch
         run: |
           python3 tools/one-shot-v093-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/compose-volcengine-model-list.mjs')
+          source = path.read_text()
+          old = '今日调用 ${models.length} 个'
+          new = '今日调用 \\${models.length} 个'
+          assert source.count(old) == 1, source.count(old)
+          path.write_text(source.replace(old, new, 1))
+          PY
           node tools/sync-version.mjs 0.9.3
           node tools/compose-volcengine-model-list.mjs
           node tools/compose-volcengine-model-list.mjs
