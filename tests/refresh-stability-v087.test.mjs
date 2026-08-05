@@ -3,24 +3,35 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const app = fs.readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+const desktop = fs.readFileSync(new URL('../web/desktop.js', import.meta.url), 'utf8');
+const worker = fs.readFileSync(new URL('../web/png-worker.js', import.meta.url), 'utf8');
 const compose = fs.readFileSync(new URL('../tools/compose-extractor.mjs', import.meta.url), 'utf8');
 const extractor = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
 
-test('dashboard publishing is serialized, reusable, and burst-debounced', () => {
-  assert.match(app, /const outputCanvas = document\.createElement\('canvas'\)/);
-  assert.match(app, /let publishPromise = null/);
-  assert.match(app, /let publishDirty = false/);
+test('PNG compression runs off the control-center thread', () => {
+  assert.match(app, /new Worker\(new URL\('\.\/png-worker\.js'/);
+  assert.match(app, /let publishInFlight = null/);
+  assert.match(app, /let publishQueued = false/);
   assert.match(app, /function schedulePublish/);
-  assert.match(app, /while \(publishDirty\)/);
-  assert.doesNotMatch(app, /async function publish\(\) \{[\s\S]*?const outputCanvas = document\.createElement/);
+  assert.doesNotMatch(app, /requestAnimationFrame|publishDirty|publishPromise/);
+  assert.match(worker, /encodeGrayscalePng/);
+  assert.match(worker, /rgbaToGrayscale/);
+  assert.match(worker, /postMessage\(\{ id, png: png\.buffer \}/);
 });
 
-test('manual refresh cannot pile up or leave the control center disabled forever', () => {
-  assert.match(app, /REFRESH_COMMAND_TIMEOUT_MS/);
-  assert.match(app, /REFRESH_COOLDOWN_MS/);
+test('manual refresh returns to the stable single-flight flow', () => {
   assert.match(app, /refreshInFlight/);
-  assert.match(app, /invokeWithTimeout\('refresh_sources'/);
-  assert.match(app, /界面已恢复响应/);
+  assert.match(app, /await invoke\?\.\('refresh_sources'\)/);
+  assert.doesNotMatch(app, /REFRESH_COMMAND_TIMEOUT_MS|REFRESH_COOLDOWN_MS|invokeWithTimeout/);
+  assert.match(app, /正在重新载入数据源/);
+});
+
+test('tray updates are serialized and deduplicated before opening Kindle pages', () => {
+  assert.match(desktop, /traySyncInFlight/);
+  assert.match(desktop, /lastSourceStatus/);
+  assert.match(desktop, /lastUpdateStatus/);
+  assert.doesNotMatch(desktop, /Promise\.allSettled/);
+  assert.match(desktop, /正在打开 Kindle 页面/);
 });
 
 test('release extractor removes the hidden WebView close-on-reload race', () => {
