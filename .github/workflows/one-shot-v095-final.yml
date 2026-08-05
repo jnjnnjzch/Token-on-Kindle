@@ -51,14 +51,7 @@ jobs:
 
           test = Path('tests/long-running-sync-v095.test.mjs')
           text = test.read_text(encoding='utf-8')
-          anchor = "    assert.match(reader, /function triggerDataRefresh\\(\\)/);\n"
-          if text.count(anchor) != 1:
-              raise SystemExit('long-running sync test anchor changed')
-          text = text.replace(
-              anchor,
-              anchor + "    assert.match(reader, /if \\(!control\\.isConnected\\) continue/);\n",
-              1,
-          )
+          text += "\ntest('hidden Volcengine WebView can still trigger the matched SPA refresh control', () => {\n  assert.match(reader, /if \\(!control\\.isConnected\\) continue/);\n  assert.doesNotMatch(reader, /getBoundingClientRect/);\n});\n"
           test.write_text(text, encoding='utf-8')
 
           readme = Path('README.md')
