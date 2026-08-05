@@ -19,6 +19,33 @@ jobs:
           fetch-depth: 0
       - name: Apply bridge patch
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          path = Path('tools/apply-v090-navigation-bridge.py')
+          text = path.read_text()
+          start = text.index('title_line = "    document.title')
+          end = text.index('\ndeepseek_line =', start)
+          corrected = dedent('''
+          canonical_signal_marker = ''' + '"''"' + '''canonical = canonical.replace(
+            'hide.onclick = () => window.close();',
+          ''' + '"''"' + ''')
+          assert canonical_signal_marker in text, "canonical replacement chain changed"
+          canonical_signal_replace = ''' + '"''"' + '''canonical = canonical.replace(
+            "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;",
+            "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;\\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);"
+          );
+          ''' + '"''"' + '''
+          text = text.replace(canonical_signal_marker, canonical_signal_replace + canonical_signal_marker, 1)
+
+          old_hide_output = "  hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };"
+          new_hide_output = "  hide.onclick = () => {\\n    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';\\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');\\n  };"
+          hide_compose_marker = "  \\\"hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };\\\""
+          assert hide_compose_marker in text, "source hide compose output changed"
+          text = text.replace(hide_compose_marker, "  " + repr(new_hide_output), 1)
+          ''').lstrip()
+          path.write_text(text[:start] + corrected + text[end:])
+          PY
           python3 tools/apply-v090-navigation-bridge.py
           node tools/compose-volcengine-model-list.mjs
           node tools/compose-extractor.mjs
