@@ -1,0 +1,476 @@
+name: One-shot v0.9.5 long-running sync fix
+
+on:
+  push:
+    branches:
+      - agent/fix-long-running-sync-v095
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-long-running-sync-v095
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply stability fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one exact match, found {count}')
+              write(path, text.replace(old, new, 1))
+
+          # Native refresh: strict hook detection and per-source isolation.
+          path = 'src-tauri/src/lib.rs'
+          text = read(path)
+          runtime_struct = '''#[derive(Debug, Clone, Serialize)]
+          #[serde(rename_all = "camelCase")]
+          struct RuntimeSettings {
+              refresh_minutes: u64,
+              image_url: String,
+              browser_url: String,
+          }
+          '''
+          refresh_struct = runtime_struct + '''
+          #[derive(Debug, Clone, Serialize)]
+          #[serde(rename_all = "camelCase")]
+          struct RefreshSummary {
+              refreshed: Vec<String>,
+              failed: Vec<String>,
+          }
+          '''
+          if text.count(runtime_struct) != 1:
+              raise SystemExit('lib.rs: RuntimeSettings anchor changed')
+          text = text.replace(runtime_struct, refresh_struct, 1)
+          old_sync = '''        "window.__TOKEN_ON_KINDLE_SYNC__?.({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \\\"{sync_requested_at}\\\" }})"
+          '''
+          new_sync = '''        "if (typeof window.__TOKEN_ON_KINDLE_SYNC__ !== 'function') {{ throw new Error('Token on Kindle sync hook unavailable'); }} void window.__TOKEN_ON_KINDLE_SYNC__({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \\\"{sync_requested_at}\\\" }})"
+          '''
+          if text.count(old_sync) != 1:
+              raise SystemExit('lib.rs: sync hook anchor changed')
+          text = text.replace(old_sync, new_sync, 1)
+          desktop_start = text.index('#[cfg(not(any(target_os = "android", target_os = "ios")))]\nfn reload_sources')
+          mobile_start = text.index('#[cfg(any(target_os = "android", target_os = "ios"))]\nfn reload_sources', desktop_start)
+          desktop_reload = '''#[cfg(not(any(target_os = "android", target_os = "ios")))]
+          fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
+              let refresh_minutes = app.state::<AppState>().refresh.get();
+              let sync_requested_at = timestamp();
+              let mut refreshed = Vec::new();
+              let mut failed = Vec::new();
+
+              for (label, source_name, reload_page) in [
+                  ("codex-login", "Codex", true),
+                  ("deepseek-login", "DeepSeek", true),
+                  ("volcengine-login", "火山方舟", false),
+              ] {
+                  let Some(window) = app.get_webview_window(label) else {
+                      failed.push(format!("{source_name}：后台窗口不存在"));
+                      continue;
+                  };
+                  match background_refresh_window(
+                      &window,
+                      reload_page,
+                      refresh_minutes,
+                      &sync_requested_at,
+                  ) {
+                      Ok(()) => refreshed.push(source_name.to_string()),
+                      Err(error) => failed.push(format!("{source_name}：{error}")),
+                  }
+              }
+
+              if refreshed.is_empty() {
+                  return Err(if failed.is_empty() {
+                      "没有可刷新的后台窗口".into()
+                  } else {
+                      format!("所有数据源刷新失败：{}", failed.join("；"))
+                  });
+              }
+
+              if !failed.is_empty() {
+                  eprintln!("partial source refresh failure: {}", failed.join(" | "));
+              }
+              Ok(RefreshSummary { refreshed, failed })
+          }
+
+          '''
+          text = text[:desktop_start] + desktop_reload + text[mobile_start:]
+          old_mobile_sig = '''fn reload_sources(app: &AppHandle) -> Result<(), String> {
+          '''
+          new_mobile_sig = '''fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
+          '''
+          mobile_region = text[mobile_start:]
+          if mobile_region.count(old_mobile_sig) != 1:
+              raise SystemExit('lib.rs: mobile reload signature changed')
+          mobile_region = mobile_region.replace(old_mobile_sig, new_mobile_sig, 1)
+          old_mobile_tail = '''    window
+                  .navigate(CODEX_URL.parse().map_err(|error| format!("URL 错误: {error}"))?)
+                  .map_err(|error| error.to_string())
+          }
+
+          #[tauri::command]
+          async fn refresh_sources(app: AppHandle) -> Result<(), String> {
+              reload_sources(&app)
+          }
+          '''
+          new_mobile_tail = '''    window
+                  .navigate(CODEX_URL.parse().map_err(|error| format!("URL 错误: {error}"))?)
+                  .map_err(|error| error.to_string())?;
+              Ok(RefreshSummary {
+                  refreshed: vec!["移动端采集".into()],
+                  failed: Vec::new(),
+              })
+          }
+
+          #[tauri::command]
+          async fn refresh_sources(app: AppHandle) -> Result<RefreshSummary, String> {
+              reload_sources(&app)
+          }
+          '''
+          if mobile_region.count(old_mobile_tail) != 1:
+              raise SystemExit('lib.rs: mobile refresh tail changed')
+          mobile_region = mobile_region.replace(old_mobile_tail, new_mobile_tail, 1)
+          text = text[:mobile_start] + mobile_region
+          old_scheduler = '''        if timeout.timed_out() && !desktop::is_paused(&app) {
+                      let _ = reload_sources(&app);
+                  }
+          '''
+          new_scheduler = '''        if timeout.timed_out() && !desktop::is_paused(&app) {
+                      match reload_sources(&app) {
+                          Ok(summary) if !summary.failed.is_empty() => {
+                              eprintln!("scheduled refresh completed with failures: {}", summary.failed.join(" | "));
+                          }
+                          Err(error) => eprintln!("scheduled refresh failed: {error}"),
+                          _ => {}
+                      }
+                  }
+          '''
+          if text.count(old_scheduler) != 1:
+              raise SystemExit('lib.rs: scheduler anchor changed')
+          text = text.replace(old_scheduler, new_scheduler, 1)
+          write(path, text)
+
+          # Control-center worker recovery and partial refresh reporting.
+          path = 'web/app.js'
+          text = read(path)
+          text = text.replace('const PUBLISH_DEBOUNCE_MS = 350;\n', 'const PUBLISH_DEBOUNCE_MS = 350;\nconst PNG_WORKER_TIMEOUT_MS = 30_000;\n', 1)
+          worker_start = text.index('function rejectWorkerRequests(error) {')
+          worker_end = text.index('async function renderAndStoreDashboard()', worker_start)
+          worker_block = '''function rejectWorkerRequests(error) {
+            for (const request of pngWorkerRequests.values()) {
+              clearTimeout(request.timer);
+              request.reject(error);
+            }
+            pngWorkerRequests.clear();
+          }
+
+          function resetPngWorker(error) {
+            const worker = pngWorker;
+            pngWorker = null;
+            try { worker?.terminate(); } catch { /* already stopped */ }
+            rejectWorkerRequests(error);
+          }
+
+          function getPngWorker() {
+            if (pngWorkerFailed || typeof Worker !== 'function') return null;
+            if (pngWorker) return pngWorker;
+            try {
+              const worker = new Worker(new URL('./png-worker.js', import.meta.url), { type: 'module' });
+              pngWorker = worker;
+              worker.onmessage = event => {
+                const { id, png, error } = event.data || {};
+                const request = pngWorkerRequests.get(id);
+                if (!request) return;
+                clearTimeout(request.timer);
+                pngWorkerRequests.delete(id);
+                if (error) request.reject(new Error(error));
+                else request.resolve(new Uint8Array(png));
+              };
+              worker.onerror = event => {
+                if (pngWorker !== worker) return;
+                resetPngWorker(new Error(event.message || 'PNG 后台线程失败，已自动重建'));
+              };
+              return worker;
+            } catch {
+              pngWorkerFailed = true;
+              return null;
+            }
+          }
+
+          function encodeDashboardPng(width, height, rgba) {
+            const worker = getPngWorker();
+            if (!worker) return Promise.resolve(encodeGrayscalePng(width, height, rgbaToGrayscale(rgba)));
+            const id = ++pngWorkerRequestId;
+            return new Promise((resolve, reject) => {
+              const timer = setTimeout(() => {
+                if (!pngWorkerRequests.has(id)) return;
+                resetPngWorker(new Error('PNG 后台线程超时，已自动重建'));
+              }, PNG_WORKER_TIMEOUT_MS);
+              pngWorkerRequests.set(id, { resolve, reject, timer });
+              try {
+                worker.postMessage({ id, width, height, rgba: rgba.buffer }, [rgba.buffer]);
+              } catch (error) {
+                clearTimeout(timer);
+                pngWorkerRequests.delete(id);
+                reject(error);
+              }
+            });
+          }
+
+          '''
+          text = text[:worker_start] + worker_block + text[worker_end:]
+          old_refresh = '''    await invoke?.('refresh_sources');
+              document.querySelector('#service').textContent = serviceDescription('已触发刷新，等待页面返回');
+          '''
+          new_refresh = '''    const result = await invoke?.('refresh_sources');
+              const failed = Array.isArray(result?.failed) ? result.failed : [];
+              document.querySelector('#service').textContent = failed.length
+                ? serviceDescription(`已触发其余来源；${failed.join('；')}`)
+                : serviceDescription('已触发刷新，等待页面返回');
+          '''
+          if text.count(old_refresh) != 1:
+              raise SystemExit('app.js: refresh result anchor changed')
+          text = text.replace(old_refresh, new_refresh, 1)
+          write(path, text)
+
+          # Volcengine: trigger the current SPA query, expire stale chart fallback, keep bounded state.
+          path = 'web/volcengine-chart-reader.js'
+          text = read(path)
+          text = text.replace('  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));\n', '  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));\n  const MAX_CACHED_CHART_AGE_MS = 90_000;\n', 1)
+          text = text.replace('    lastGoodChart: null,\n    collecting: false,', '    lastGoodChart: null,\n    lastGoodAt: 0,\n    collecting: false,', 1)
+          old_cache_head = '''  function cachedChartFallback(diagnostics, dates, granularity) {
+              if (!state.lastGoodChart) {
+          '''
+          new_cache_head = '''  function cachedChartFallback(diagnostics, dates, granularity) {
+              const cacheAgeMs = state.lastGoodAt ? Date.now() - state.lastGoodAt : Number.POSITIVE_INFINITY;
+              if (!state.lastGoodChart || cacheAgeMs > MAX_CACHED_CHART_AGE_MS) {
+                state.lastGoodChart = null;
+                state.lastGoodAt = 0;
+          '''
+          if text.count(old_cache_head) != 1:
+              raise SystemExit('volcengine reader: cache fallback anchor changed')
+          text = text.replace(old_cache_head, new_cache_head, 1)
+          text = text.replace('        cachedFrom: state.lastGoodChart.source,\n', '        cachedFrom: state.lastGoodChart.source,\n        cacheAgeMs,\n', 1)
+          text = text.replace('    state.lastGoodChart = result;\n    return result;', '    state.lastGoodChart = result;\n    state.lastGoodAt = Date.now();\n    return result;', 1)
+          retry_anchor = '  function scheduleRetry(options, delay = 1200) {'
+          refresh_helpers = '''  function controlText(element) {
+            return clean(element.textContent || element.getAttribute('aria-label') || element.getAttribute('title') || '');
+          }
+
+          function controlContext(element) {
+            let node = element;
+            let context = '';
+            for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
+              const text = clean(node.innerText || node.textContent || '');
+              if (text && text.length <= 4000) context = text;
+              if (/(模型调用明细|用量统计|AFP|开始日期|结束日期)/.test(text)) break;
+            }
+            return context;
+          }
+
+          function triggerDataRefresh() {
+            const roots = [sectionRoot(), document].filter(Boolean);
+            const seen = new Set();
+            for (const root of roots) {
+              for (const control of root.querySelectorAll('button,[role="button"]')) {
+                if (seen.has(control) || control.disabled || control.getAttribute('aria-disabled') === 'true') continue;
+                seen.add(control);
+                const rect = control.getBoundingClientRect();
+                if (!rect.width || !rect.height) continue;
+                const label = controlText(control);
+                if (!/^(查询|刷新|搜索|更新|query|refresh|search|update)$/i.test(label)) continue;
+                if (!/(模型调用明细|用量统计|AFP|开始日期|结束日期)/.test(controlContext(control))) continue;
+                try {
+                  control.click();
+                  return label;
+                } catch { /* fall through to the next matching control */ }
+              }
+            }
+            return null;
+          }
+
+          '''
+          if text.count(retry_anchor) != 1:
+              raise SystemExit('volcengine reader: retry anchor changed')
+          text = text.replace(retry_anchor, refresh_helpers + retry_anchor, 1)
+          old_collect_start = '''    applySyncOptions(options);
+              try {
+                await sleep(40);
+                const windows = WINDOWS.map(collectWindow).filter(Boolean);
+          '''
+          new_collect_start = '''    applySyncOptions(options);
+              try {
+                let refreshAction = null;
+                if (!options.retry && (options.manual || options.automatic)) {
+                  refreshAction = triggerDataRefresh();
+                }
+                if (refreshAction) {
+                  resetDomCache(true);
+                  await sleep(900);
+                } else {
+                  await sleep(40);
+                }
+                const windows = WINDOWS.map(collectWindow).filter(Boolean);
+          '''
+          if text.count(old_collect_start) != 1:
+              raise SystemExit('volcengine reader: collect start anchor changed')
+          text = text.replace(old_collect_start, new_collect_start, 1)
+          text = text.replace('          modelChart: chart.diagnostics\n', '          modelChart: chart.diagnostics,\n          refreshAction\n', 1)
+          old_reset = '''  function resetDomCache() {
+              state.section = null;
+              state.chart = null;
+              state.cards.clear();
+            }
+          '''
+          new_reset = '''  function resetDomCache(clearLastGood = false) {
+              state.section = null;
+              state.chart = null;
+              state.cards.clear();
+              if (clearLastGood) {
+                state.lastGoodChart = null;
+                state.lastGoodAt = 0;
+              }
+            }
+          '''
+          if text.count(old_reset) != 1:
+              raise SystemExit('volcengine reader: reset cache anchor changed')
+          text = text.replace(old_reset, new_reset, 1)
+          text = text.replace("    resetDomCache();\n    installSyncOverride();\n    scheduleRetry({ automatic: true, pageshow: true }, 500);", "    resetDomCache(true);\n    installSyncOverride();\n    scheduleRetry({ automatic: true, pageshow: true }, 500);", 1)
+          text = text.replace("    resetDomCache();\n    scheduleRetry({ automatic: true, navigation: true }, 700);", "    resetDomCache(true);\n    scheduleRetry({ automatic: true, navigation: true }, 700);", 2)
+          write(path, text)
+
+          # Remove the unused full-response Volcengine interception from canonical source.
+          path = 'web/extractor-base.js'
+          text = read(path)
+          text, count = re.subn(r'\n  function installVolcengineNetworkCapture\(\) \{.*?\n  installVolcengineNetworkCapture\(\);\n', '\n', text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('extractor-base.js: Volcengine interception block changed')
+          write(path, text)
+
+          path = 'tools/compose-extractor.mjs'
+          text = read(path)
+          old_compose_remove = '''canonical = canonical.replace(
+            /\\n\\s*installVolcengineNetworkCapture\\(\\);/g,
+            '\\n  // Volcengine reads rendered ReactECharts state; request interception stays disabled.'
+          );
+          '''
+          if text.count(old_compose_remove) != 1:
+              raise SystemExit('compose-extractor: interception replacement anchor changed')
+          text = text.replace(old_compose_remove, '', 1)
+          text = text.replace('  window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;\n', '', 1)
+          old_guard = "if (/\\n\\s*installVolcengineNetworkCapture\\(\\);/.test(output)) throw new Error('legacy Volcengine interception remains active');"
+          new_guard = "if (output.includes('installVolcengineNetworkCapture') || output.includes('__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__')) throw new Error('legacy Volcengine response cache remains active');"
+          if text.count(old_guard) != 1:
+              raise SystemExit('compose-extractor: final interception guard changed')
+          text = text.replace(old_guard, new_guard, 1)
+          write(path, text)
+
+          # Update direct-reader contract to require complete cache removal.
+          path = 'tests/volcengine-direct-chart-v084.test.mjs'
+          text = read(path)
+          old_test = '''  const guard = built.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
+            assert.ok(guard >= 0, 'Volcengine capture guard must be installed before canonical code');
+            assert.doesNotMatch(built, /\\n\\s*installVolcengineNetworkCapture\\(\\);/);
+          '''
+          new_test = '''  assert.doesNotMatch(built, /installVolcengineNetworkCapture/);
+            assert.doesNotMatch(built, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
+          '''
+          if text.count(old_test) != 1:
+              raise SystemExit('direct chart test anchor changed')
+          text = text.replace(old_test, new_test, 1)
+          write(path, text)
+
+          Path('tests/long-running-sync-v095.test.mjs').write_text(r'''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+
+          const rust = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+          const app = fs.readFileSync(new URL('../web/app.js', import.meta.url), 'utf8');
+          const reader = fs.readFileSync(new URL('../web/volcengine-chart-reader.js', import.meta.url), 'utf8');
+          const base = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
+          const compose = fs.readFileSync(new URL('../tools/compose-extractor.mjs', import.meta.url), 'utf8');
+          const built = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
+
+          test('refresh attempts every source and reports partial failures', () => {
+            assert.match(rust, /\("codex-login", "Codex", true\)/);
+            assert.match(rust, /\("deepseek-login", "DeepSeek", true\)/);
+            assert.match(rust, /\("volcengine-login", "火山方舟", false\)/);
+            assert.match(rust, /failed\.push\(format!\("\{source_name\}：\{error\}"\)\)/);
+            assert.match(rust, /Ok\(RefreshSummary \{ refreshed, failed \}\)/);
+            assert.match(rust, /typeof window\.__TOKEN_ON_KINDLE_SYNC__ !== 'function'/);
+            assert.doesNotMatch(rust, /window\.__TOKEN_ON_KINDLE_SYNC__\?\./);
+          });
+
+          test('Volcengine refreshes the current SPA controls and expires stale chart fallback', () => {
+            assert.match(reader, /function triggerDataRefresh\(\)/);
+            assert.match(reader, /\^\(查询\|刷新\|搜索\|更新\|query\|refresh\|search\|update\)\$/);
+            assert.match(reader, /MAX_CACHED_CHART_AGE_MS = 90_000/);
+            assert.match(reader, /cacheAgeMs > MAX_CACHED_CHART_AGE_MS/);
+            assert.match(reader, /resetDomCache\(true\)/);
+          });
+
+          test('PNG worker timeouts reject pending work and allow a new worker', () => {
+            assert.match(app, /PNG_WORKER_TIMEOUT_MS = 30_000/);
+            assert.match(app, /function resetPngWorker\(error\)/);
+            assert.match(app, /PNG 后台线程超时，已自动重建/);
+            assert.match(app, /clearTimeout\(request\.timer\)/);
+            assert.match(app, /result\?\.failed/);
+          });
+
+          test('unused Volcengine full-response cache is absent from source and release extractor', () => {
+            for (const source of [base, built]) {
+              assert.doesNotMatch(source, /installVolcengineNetworkCapture/);
+              assert.doesNotMatch(source, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
+            }
+            assert.match(compose, /legacy Volcengine response cache remains active/);
+          });
+          ''', encoding='utf-8')
+          PY
+
+          node tools/compose-extractor.mjs
+          node tools/compose-extractor.mjs
+          node tools/sync-version.mjs v0.9.5
+          rm -f package-lock.json
+          rm -f .github/workflows/one-shot-v095-long-running-sync.yml
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Run complete JavaScript test suite
+        run: npm test
+
+      - name: Validate Rust formatting and compile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --check
+          git status --short
+          git add -A
+          git commit -m "v0.9.5: harden long-running synchronization"
+          git push origin HEAD:agent/fix-long-running-sync-v095
