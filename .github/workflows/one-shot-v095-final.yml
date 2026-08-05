@@ -33,6 +33,38 @@ jobs:
           PY
           python3 tools/one-shot-v095-final.py
           python3 tools/one-shot-v095-format-tests.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          reader = Path('web/volcengine-chart-reader.js')
+          text = reader.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r'\n\s*const rect = control\.getBoundingClientRect\(\);\n\s*if \(!rect\.width \|\| !rect\.height\) continue;',
+              '\n        if (!control.isConnected) continue;',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('hidden Volcengine control guard changed')
+          reader.write_text(text, encoding='utf-8')
+
+          test = Path('tests/long-running-sync-v095.test.mjs')
+          text = test.read_text(encoding='utf-8')
+          anchor = "    assert.match(reader, /function triggerDataRefresh\\(\\)/);\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('long-running sync test anchor changed')
+          text = text.replace(
+              anchor,
+              anchor + "    assert.match(reader, /if \\(!control\\.isConnected\\) continue/);\n",
+              1,
+          )
+          test.write_text(text, encoding='utf-8')
+
+          readme = Path('README.md')
+          lines = readme.read_text(encoding='utf-8').splitlines()
+          readme.write_text('\n'.join(line.rstrip() for line in lines) + '\n', encoding='utf-8')
+          PY
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
           node tools/sync-version.mjs v0.9.5
