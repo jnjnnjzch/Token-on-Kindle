@@ -10,9 +10,7 @@ const DISPLAY_STORAGE_KEY = 'token-on-kindle:display-sources-v2';
 const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
-const PUBLISH_DEBOUNCE_MS = 500;
-const REFRESH_COMMAND_TIMEOUT_MS = 12_000;
-const REFRESH_COOLDOWN_MS = 15_000;
+const PUBLISH_DEBOUNCE_MS = 350;
 const SOURCES = Object.freeze([
   { id: 'codex', name: 'Codex' },
   { id: 'deepseek', name: 'DeepSeek' },
@@ -29,14 +27,15 @@ let state = {
 let displaySources = loadDisplaySources();
 const canvas = document.querySelector('#dashboard');
 const previewCtx = canvas.getContext('2d', { willReadFrequently: true });
-const outputCanvas = document.createElement('canvas');
-const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
 let selectedProfileId = localStorage.getItem('token-on-kindle:profile') || DEFAULT_PROFILE_ID;
 let publishTimer = null;
-let publishPromise = null;
-let publishDirty = false;
+let publishInFlight = null;
+let publishQueued = false;
 let refreshInFlight = false;
-let lastRefreshRequestedAt = 0;
+let pngWorker = null;
+let pngWorkerFailed = false;
+let pngWorkerRequestId = 0;
+const pngWorkerRequests = new Map();
 
 const numeric = value => {
   const raw = typeof value === 'object' && value !== null ? value.value : value;
@@ -199,20 +198,64 @@ function updateRefreshUi() {
   document.querySelector('#refresh-value').textContent = refreshDescription(state.refreshMinutes);
 }
 
-function yieldToUi() {
-  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+function rejectWorkerRequests(error) {
+  for (const request of pngWorkerRequests.values()) request.reject(error);
+  pngWorkerRequests.clear();
+}
+
+function getPngWorker() {
+  if (pngWorkerFailed || typeof Worker !== 'function') return null;
+  if (pngWorker) return pngWorker;
+  try {
+    pngWorker = new Worker(new URL('./png-worker.js', import.meta.url), { type: 'module' });
+    pngWorker.onmessage = event => {
+      const { id, png, error } = event.data || {};
+      const request = pngWorkerRequests.get(id);
+      if (!request) return;
+      pngWorkerRequests.delete(id);
+      if (error) request.reject(new Error(error));
+      else request.resolve(new Uint8Array(png));
+    };
+    pngWorker.onerror = event => {
+      pngWorkerFailed = true;
+      const error = new Error(event.message || 'PNG 后台线程失败');
+      rejectWorkerRequests(error);
+      pngWorker?.terminate();
+      pngWorker = null;
+    };
+    return pngWorker;
+  } catch {
+    pngWorkerFailed = true;
+    return null;
+  }
+}
+
+function encodeDashboardPng(width, height, rgba) {
+  const worker = getPngWorker();
+  if (!worker) return Promise.resolve(encodeGrayscalePng(width, height, rgbaToGrayscale(rgba)));
+  const id = ++pngWorkerRequestId;
+  return new Promise((resolve, reject) => {
+    pngWorkerRequests.set(id, { resolve, reject });
+    try {
+      worker.postMessage({ id, width, height, rgba: rgba.buffer }, [rgba.buffer]);
+    } catch (error) {
+      pngWorkerRequests.delete(id);
+      reject(error);
+    }
+  });
 }
 
 async function renderAndStoreDashboard() {
   renderPreview();
   if (!invoke) return;
-  await yieldToUi();
   const profile = getKindleProfile(selectedProfileId);
-  if (outputCanvas.width !== profile.width) outputCanvas.width = profile.width;
-  if (outputCanvas.height !== profile.height) outputCanvas.height = profile.height;
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = profile.width;
+  outputCanvas.height = profile.height;
+  const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
   renderToContext(outputCtx, profile.width, profile.height);
   const rgba = outputCtx.getImageData(0, 0, profile.width, profile.height).data;
-  const png = encodeGrayscalePng(profile.width, profile.height, rgbaToGrayscale(rgba));
+  const png = await encodeDashboardPng(profile.width, profile.height, rgba);
   const check = verifyKindlePng(png, profile.width, profile.height);
   if (!check.ok) throw new Error(check.error);
   await invoke('set_dashboard_png', { bytes: Array.from(png), profile: profile.id });
@@ -223,22 +266,23 @@ async function publish() {
     clearTimeout(publishTimer);
     publishTimer = null;
   }
-  publishDirty = true;
-  if (publishPromise) return publishPromise;
-  publishPromise = (async () => {
-    while (publishDirty) {
-      publishDirty = false;
+  if (publishInFlight) {
+    publishQueued = true;
+    return publishInFlight;
+  }
+  publishInFlight = (async () => {
+    do {
+      publishQueued = false;
       await renderAndStoreDashboard();
-    }
+    } while (publishQueued);
   })().finally(() => {
-    publishPromise = null;
+    publishInFlight = null;
   });
-  return publishPromise;
+  return publishInFlight;
 }
 
 function schedulePublish(delay = PUBLISH_DEBOUNCE_MS) {
   renderPreview();
-  publishDirty = true;
   if (!invoke) return;
   if (publishTimer) clearTimeout(publishTimer);
   publishTimer = setTimeout(() => {
@@ -332,35 +376,20 @@ async function openSource(source) {
   }
 }
 
-function invokeWithTimeout(command, args, timeoutMs) {
-  let timer;
-  return Promise.race([
-    invoke?.(command, args),
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('刷新命令等待超时')), timeoutMs);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
-
 async function refreshNow() {
   const button = document.querySelector('#refresh');
-  const now = Date.now();
-  if (refreshInFlight || now - lastRefreshRequestedAt < REFRESH_COOLDOWN_MS) {
-    document.querySelector('#service').textContent = serviceDescription('刷新已经在进行，请等待数据返回');
+  if (refreshInFlight) {
+    document.querySelector('#service').textContent = serviceDescription('刷新已经在进行');
     return;
   }
   refreshInFlight = true;
-  lastRefreshRequestedAt = now;
   button.disabled = true;
-  document.querySelector('#service').textContent = '正在刷新数据源；火山方舟保留当前企业版用量视图…';
+  document.querySelector('#service').textContent = '正在重新载入数据源…';
   try {
-    await invokeWithTimeout('refresh_sources', undefined, REFRESH_COMMAND_TIMEOUT_MS);
+    await invoke?.('refresh_sources');
     document.querySelector('#service').textContent = serviceDescription('已触发刷新，等待页面返回');
   } catch (error) {
-    const message = String(error?.message || error);
-    document.querySelector('#service').textContent = message.includes('等待超时')
-      ? serviceDescription('后台刷新仍在继续，界面已恢复响应')
-      : `刷新失败：${message}`;
+    document.querySelector('#service').textContent = `刷新失败：${error}`;
   } finally {
     setTimeout(() => {
       refreshInFlight = false;

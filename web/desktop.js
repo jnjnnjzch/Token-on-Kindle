@@ -3,6 +3,10 @@ const listen = window.__TAURI__?.event?.listen;
 const panel = document.querySelector('#desktop-integration');
 let desktop = null;
 let syncTimer = null;
+let traySyncInFlight = null;
+let traySyncQueued = false;
+let lastSourceStatus = '';
+let lastUpdateStatus = '';
 
 const text = selector => document.querySelector(selector)?.textContent?.trim() || '';
 const connectionText = source => {
@@ -35,25 +39,51 @@ async function loadDesktopState() {
   catch { if (panel) panel.hidden = true; }
 }
 
-async function pushTrayStatus() {
-  if (!invoke || !desktop || ['android', 'ios'].includes(desktop.platform)) return;
+function trayPayloads() {
   const install = document.querySelector('#install-update');
-  await Promise.allSettled([
-    invoke('set_tray_source_status', {
+  return {
+    source: {
       codex: connectionText('codex'),
       deepseek: connectionText('deepseek'),
       volcengine: connectionText('volcengine')
-    }),
-    invoke('set_tray_update_status', {
+    },
+    update: {
       status: text('#update-status'),
       actionable: Boolean(install && !install.hidden && !install.disabled)
-    })
-  ]);
+    }
+  };
+}
+
+async function pushTrayStatus() {
+  if (!invoke || !desktop || ['android', 'ios'].includes(desktop.platform)) return;
+  if (traySyncInFlight) {
+    traySyncQueued = true;
+    return traySyncInFlight;
+  }
+  traySyncInFlight = (async () => {
+    do {
+      traySyncQueued = false;
+      const payloads = trayPayloads();
+      const sourceKey = JSON.stringify(payloads.source);
+      const updateKey = JSON.stringify(payloads.update);
+      if (sourceKey !== lastSourceStatus) {
+        await invoke('set_tray_source_status', payloads.source);
+        lastSourceStatus = sourceKey;
+      }
+      if (updateKey !== lastUpdateStatus) {
+        await invoke('set_tray_update_status', payloads.update);
+        lastUpdateStatus = updateKey;
+      }
+    } while (traySyncQueued);
+  })().catch(() => {}).finally(() => {
+    traySyncInFlight = null;
+  });
+  return traySyncInFlight;
 }
 
 function scheduleTraySync() {
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => pushTrayStatus(), 120);
+  syncTimer = setTimeout(() => pushTrayStatus(), 500);
 }
 
 new MutationObserver(scheduleTraySync).observe(document.body, {
@@ -70,8 +100,18 @@ document.querySelector('#toggle-collection')?.addEventListener('click', async ()
 document.querySelector('#toggle-autostart')?.addEventListener('click', async () => {
   renderDesktopState(await invoke('set_autostart_enabled', { enabled: !desktop.autostartEnabled }));
 });
-document.querySelector('#open-system-browser')?.addEventListener('click', async () => {
-  await invoke('open_browser_url');
+document.querySelector('#open-system-browser')?.addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  document.querySelector('#service').textContent = '正在打开 Kindle 页面…';
+  try {
+    await invoke('open_browser_url');
+    document.querySelector('#service').textContent = 'Kindle 页面已交给系统浏览器打开';
+  } catch (error) {
+    document.querySelector('#service').textContent = `打开 Kindle 页面失败：${error}`;
+  } finally {
+    button.disabled = false;
+  }
 });
 document.querySelector('#copy-kindle-url')?.addEventListener('click', async event => {
   const original = event.currentTarget.textContent;
