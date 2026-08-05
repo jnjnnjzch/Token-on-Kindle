@@ -19,6 +19,21 @@ jobs:
           fetch-depth: 0
       - name: Apply bridge patch
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply-v090-navigation-bridge.py')
+          text = path.read_text()
+          old = """    const path = kind === 'signal'
+                ? `/signal/${encodeURIComponent(value)}/${encoded}`
+                : `/action/${encodeURIComponent(value)}`;
+              const url = `${BRIDGE_ORIGIN}${path}?nonce=${Date.now()}-${++bridgeSequence}`;"""
+          new = """    const path = kind === 'signal'
+                ? '/signal/' + encodeURIComponent(value) + '/' + encoded
+                : '/action/' + encodeURIComponent(value);
+              const url = BRIDGE_ORIGIN + path + '?nonce=' + Date.now() + '-' + (++bridgeSequence);"""
+          assert old in text, 'navigation bridge bootstrap shape changed'
+          path.write_text(text.replace(old, new, 1))
+          PY
           python3 tools/apply-v090-navigation-bridge.py
           node tools/compose-volcengine-model-list.mjs
           node tools/compose-extractor.mjs
