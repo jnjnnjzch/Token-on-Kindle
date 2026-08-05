@@ -38,3 +38,24 @@ test('release extractor removes the hidden WebView close-on-reload race', () => 
   assert.match(compose, /background close-on-reload handler remains active/);
   assert.doesNotMatch(extractor, /window\.addEventListener\('beforeunload'/);
 });
+
+test('source signals stay compact enough for the title bridge', () => {
+  assert.match(compose, /const signalCompactor/);
+  assert.match(compose, /compactDeepSeekModel/);
+  assert.match(compose, /compactVolcengineModel/);
+  assert.match(extractor, /__TOKEN_ON_KINDLE_COMPACT_SIGNAL__/);
+  assert.match(extractor, /todayTokens/);
+  assert.match(extractor, /cacheHitTokens/);
+  assert.match(extractor, /totalTokens/);
+});
+
+test('source hide button uses the native dashboard action instead of closing the WebView', () => {
+  assert.match(compose, /__TOKEN_ON_KINDLE_ACTION__:dashboard/);
+  assert.match(extractor, /__TOKEN_ON_KINDLE_ACTION__:dashboard/);
+  assert.doesNotMatch(extractor, /hide\.onclick = \(\) => window\.close\(\)/);
+});
+
+test('source toolbar no longer claims native receipt before the main window updates', () => {
+  assert.match(extractor, /已发送至主程序，主界面收到后会更新/);
+  assert.doesNotMatch(extractor, /已同步至 Kindle/);
+});
