@@ -1,4 +1,4 @@
-# deterministic retry 3
+# deterministic retry 4
 name: One-shot v0.9.3 Volcengine verified
 
 on:
@@ -32,7 +32,18 @@ jobs:
           old = '今日调用 ${models.length} 个'
           new = '今日调用 \\${models.length} 个'
           assert source.count(old) == 1, source.count(old)
-          path.write_text(source.replace(old, new, 1))
+          source = source.replace(old, new, 1)
+          source = source.replace(
+              r'\n\}\n\n(?=function drawVolcengineQuotaStrip)',
+              r'\n\}\n+(?=function drawVolcengineQuotaStrip)',
+              1
+          )
+          source = source.replace(
+              r'\n\}\n\n(?=function drawVolcengine\(ctx\))',
+              r'\n\}\n+(?=function drawVolcengine\(ctx\))',
+              1
+          )
+          path.write_text(source)
           PY
           node tools/sync-version.mjs 0.9.3
           node tools/compose-volcengine-model-list.mjs
