@@ -12,12 +12,12 @@ def replace_once(path, old, new):
 
 replace_once(
     'tests/update-helper-contract.test.mjs',
-    "  assert.match(desktop, /tray_available\\.store\\(true/);\n",
-    "  assert.match(desktop, /tray_available\\s*\\.store\\(true/);\n"
+    "  assert.match(desktopRust, /tray_available\\.store\\(true/);\n",
+    "  assert.match(desktopRust, /tray_available\\s*\\.store\\(true/);\n"
 )
 
 replace_once(
     'tests/volcengine-sticky-refresh-v094.test.mjs',
-    '''  assert.match(rust, /const VOLCENGINE_URL: &str = "https:\\/\\/console\\.volcengine\\.com\\/ark\\/region:cn-beijing\\/subscription\\/agent-plan-enterprise";/);\n''',
-    '''  assert.match(rust, /const VOLCENGINE_URL: &str\\s*=\\s*"https:\\/\\/console\\.volcengine\\.com\\/ark\\/region:cn-beijing\\/subscription\\/agent-plan-enterprise";/);\n'''
+    '  assert.match(rust, /const VOLCENGINE_URL: &str = "https:\\/\\/console\\.volcengine\\.com\\/ark\\/region:cn-beijing\\/subscription\\/agent-plan-enterprise";/);\n',
+    '  assert.match(rust, /const VOLCENGINE_URL: &str\\s*=\\s*"https:\\/\\/console\\.volcengine\\.com\\/ark\\/region:cn-beijing\\/subscription\\/agent-plan-enterprise";/);\n'
 )
