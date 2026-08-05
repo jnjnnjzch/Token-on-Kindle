@@ -1,21 +1,6 @@
 /* TOKEN-ON-KINDLE DIRECT READERS BUILD */
 (() => {
   'use strict';
-  const BRIDGE_ORIGIN = 'https://token-on-kindle.invalid';
-  let bridgeSequence = 0;
-  window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__ = (kind, value, encoded = '') => {
-    const path = kind === 'signal'
-      ? '/signal/' + encodeURIComponent(value) + '/' + encoded
-      : '/action/' + encodeURIComponent(value);
-    const url = BRIDGE_ORIGIN + path + '?nonce=' + Date.now() + '-' + (++bridgeSequence);
-    try {
-      location.assign(url);
-      return true;
-    } catch (error) {
-      console.error('[Token on Kindle] navigation bridge failed', error);
-      return false;
-    }
-  };
   const defined = object => Object.fromEntries(Object.entries(object || {}).filter(([, value]) => value !== undefined));
   const compactDeepSeekModel = model => model ? defined({
     name: model.name,
@@ -1024,7 +1009,6 @@ function readEchartsOptionFromElement(chart, echartsGlobal = null) {
     const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
     const pageTitle = document.title;
     document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;
-    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);
     setTimeout(() => {
       document.title = pageTitle || (source === 'codex' ? 'Codex Analytics' : source === 'deepseek' ? 'DeepSeek Platform' : '火山方舟 Agent Plan 企业版');
     }, 250);
@@ -1634,10 +1618,7 @@ function readEchartsOptionFromElement(chart, echartsGlobal = null) {
     const hide = document.createElement('button');
     hide.textContent = '隐藏窗口';
     hide.style.cssText = 'padding:7px 9px;border:1px solid #777;background:#fff;color:#111;border-radius:6px';
-    hide.onclick = () => {
-    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';
-    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');
-  };
+    hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };
     const note = document.createElement('span');
     note.id = '__token_on_kindle_status';
     note.style.cssText = 'grid-column:1/-1;max-width:290px;color:#555;font-size:11px;line-height:1.35';
@@ -1711,7 +1692,6 @@ function readEchartsOptionFromElement(chart, echartsGlobal = null) {
     const title = document.title;
     const encoded = encodeSignal(payload);
     document.title = `__TOKEN_ON_KINDLE__:deepseek:${encoded}`;
-    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'deepseek', encoded);
     setTimeout(() => { document.title = title || 'DeepSeek Platform'; }, 250);
   }
 
@@ -2101,7 +2081,6 @@ function readEchartsOptionFromElement(chart, echartsGlobal = null) {
     const title = document.title;
     const encoded = encodeSignal(payload);
     document.title = `__TOKEN_ON_KINDLE__:volcengine:${encoded}`;
-    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'volcengine', encoded);
     setTimeout(() => { document.title = title || '火山方舟 Agent Plan 企业版'; }, 250);
   }
 

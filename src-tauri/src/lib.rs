@@ -34,7 +34,6 @@ const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
 const VOLCENGINE_URL: &str = "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";
 const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
 const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
-const NAVIGATION_BRIDGE_HOST: &str = "token-on-kindle.invalid";
 const DEFAULT_REFRESH_MINUTES: u64 = 10;
 const MIN_REFRESH_MINUTES: u64 = 1;
 const MAX_REFRESH_MINUTES: u64 = 24 * 60;
@@ -241,15 +240,12 @@ fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
         _ => unreachable!("only static sources are created"),
     };
     let parsed = url.parse().expect("static source URL must be valid");
-    let app_handle = app.handle().clone();
-    let bridge_label = label.to_string();
     WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed))
         .title(title)
         .inner_size(1180.0, 820.0)
         .visible(false)
         .initialization_script(EXTRACTOR_SCRIPT)
         .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
-        .on_navigation(move |url| handle_navigation_bridge(&app_handle, &bridge_label, url))
         .build()?;
     Ok(())
 }
@@ -558,47 +554,6 @@ fn store_metrics_signal(app: &AppHandle, source: &str, encoded: &str) -> Result<
     app.emit_to("main", "metrics-updated", snapshot)
         .map_err(|error| format!("无法通知主窗口：{error}"))?;
     Ok(())
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn expected_source_for_label(label: &str) -> Option<&'static str> {
-    match label {
-        "codex-login" => Some("codex"),
-        "deepseek-login" => Some("deepseek"),
-        "volcengine-login" => Some("volcengine"),
-        _ => None,
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn handle_navigation_bridge(app: &AppHandle, label: &str, url: &tauri::Url) -> bool {
-    if url.scheme() != "https" || url.host_str() != Some(NAVIGATION_BRIDGE_HOST) {
-        return true;
-    }
-
-    let segments = url
-        .path_segments()
-        .map(|segments| segments.collect::<Vec<_>>())
-        .unwrap_or_default();
-    match segments.as_slice() {
-        ["action", "dashboard"] => {
-            if let Some(window) = app.get_webview_window(label) {
-                return_to_dashboard(&window);
-            }
-        }
-        ["signal", source, encoded] => {
-            let expected = expected_source_for_label(label);
-            if expected != Some(*source) {
-                eprintln!(
-                    "navigation bridge rejected source {source} from window {label}; expected {expected:?}"
-                );
-            } else if let Err(error) = store_metrics_signal(app, source, encoded) {
-                eprintln!("navigation bridge rejected {source} payload: {error}");
-            }
-        }
-        _ => eprintln!("navigation bridge rejected route: {}", url.path()),
-    }
-    false
 }
 
 fn handle_title_signal(window: &WebviewWindow, title: &str) {
