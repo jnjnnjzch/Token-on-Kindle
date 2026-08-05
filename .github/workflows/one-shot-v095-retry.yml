@@ -1,0 +1,105 @@
+name: One-shot v0.9.5 stability retry
+
+on:
+  push:
+    branches:
+      - agent/fix-long-running-sync-v095
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-long-running-sync-v095
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply corrected patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/one-shot-v095-long-running-sync.yml').read_text(encoding='utf-8')
+          start_marker = "          python3 - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          lines = source[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/v095-patch.py').write_text(script, encoding='utf-8')
+          PY
+          python3 /tmp/v095-patch.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('web/extractor-base.js')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('  function collectVolcengine() {')
+          end = text.index('  async function collectDeepSeek()', start)
+          replacement = '''  function collectVolcengine() {
+            const windows = VOLCENGINE_WINDOWS.map(collectVolcengineWindow).filter(Boolean);
+            const models = volcengineModelsFromDom();
+            const modelUsageSource = models.length ? 'dom' : 'none';
+            return {
+              source,
+              capturedAt: new Date().toISOString(),
+              plan: 'Agent Plan 企业版',
+              unit: 'AFP',
+              windows,
+              models,
+              modelUsage: {
+                source: modelUsageSource,
+                sourcePath: null,
+                capturedAt: null
+              },
+              url: location.href,
+              diagnostics: {
+                primarySource: windows.length ? 'enterprise-usage-view' : 'waiting-for-enterprise-usage-view',
+                instruction: windows.length ? null : '进入 Agent Plan 企业版的“用量统计”，看到三张 AFP 用量卡后点击“同步至 Kindle”',
+                quotaCount: windows.length,
+                usageViewReady: volcengineUsageReady(),
+                modelUsageSource,
+                modelCount: models.length
+              }
+            };
+          }
+
+          '''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+
+          node tools/compose-extractor.mjs
+          node tools/compose-extractor.mjs
+          node tools/sync-version.mjs v0.9.5
+          rm -f package-lock.json
+          rm -f .github/workflows/one-shot-v095-long-running-sync.yml
+          rm -f .github/workflows/one-shot-v095-retry.yml
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Run complete JavaScript test suite
+        run: npm test
+
+      - name: Validate Rust formatting and compile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --check
+          git status --short
+          git add -A
+          git commit -m "v0.9.5: harden long-running synchronization"
+          git push origin HEAD:agent/fix-long-running-sync-v095
