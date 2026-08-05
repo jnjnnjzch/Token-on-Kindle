@@ -353,7 +353,8 @@ function drawModelCard(ctx, model, title, x, y, width, height) {
   drawBar(ctx, x + 10, cacheTop + cacheHeight - 8, width - 20, 7, cacheRateToRatio(model.cacheRate));
 }
 
-function drawDeepSeek(ctx, deepseek = {}, box) {
+function drawDeepSeek(ctx, deepseek, box) {
+  deepseek = deepseek || {};
   drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.paper, PALETTE.ink, 2);
   drawCardTitle(ctx, 'DEEPSEEK', box, '金额 · Flash / Pro Token');
   const flash = modelMetrics(deepseek, 'flash');
@@ -378,7 +379,8 @@ function drawDeepSeek(ctx, deepseek = {}, box) {
   drawModelCard(ctx, pro, 'V4 PRO', box.x + 16 + half, modelY, half, plan.modelHeight);
 }
 
-function normalizeVolcengineWindows(volcengine = {}) {
+function normalizeVolcengineWindows(volcengine) {
+  volcengine = volcengine || {};
   const windows = Array.isArray(volcengine.windows) ? volcengine.windows.filter(Boolean) : [];
   const find = ids => windows.find(item => ids.includes(String(item?.id || '').toLowerCase())) || null;
   return [
@@ -388,7 +390,8 @@ function normalizeVolcengineWindows(volcengine = {}) {
   ];
 }
 
-export function normalizeVolcengineModels(volcengine = {}) {
+export function normalizeVolcengineModels(volcengine) {
+  volcengine = volcengine || {};
   const models = Array.isArray(volcengine.models) ? volcengine.models.filter(Boolean) : [];
   return models.map((model, index) => {
     const inputTokens = numericValue(model.inputTokens);
@@ -504,7 +507,8 @@ function drawVolcengineModels(ctx, models, box, y, height, plan) {
   });
 }
 
-function drawVolcengine(ctx, volcengine = {}, box) {
+function drawVolcengine(ctx, volcengine, box) {
+  volcengine = volcengine || {};
   drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
   const models = normalizeVolcengineModels(volcengine);
   drawCardTitle(ctx, '火山方舟 AFP', box, models.length ? `Agent Plan · ${models.length} 模型` : 'Agent Plan 企业版');
