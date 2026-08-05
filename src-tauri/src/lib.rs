@@ -13,9 +13,7 @@ use std::{
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-use tauri::{
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 mod desktop;
 mod update_helper;
@@ -31,7 +29,8 @@ use desktop::{
 const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
 const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";
 const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
-const VOLCENGINE_URL: &str = "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";
+const VOLCENGINE_URL: &str =
+    "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";
 const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
 const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
 const DEFAULT_REFRESH_MINUTES: u64 = 10;
@@ -53,6 +52,13 @@ struct RuntimeSettings {
     refresh_minutes: u64,
     image_url: String,
     browser_url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshSummary {
+    refreshed: Vec<String>,
+    failed: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,10 +103,7 @@ impl RefreshClock {
                 "刷新间隔必须在 {MIN_REFRESH_MINUTES}–{MAX_REFRESH_MINUTES} 分钟之间"
             ));
         }
-        let mut current = self
-            .minutes
-            .lock()
-            .map_err(|_| "刷新计时器锁已损坏")?;
+        let mut current = self.minutes.lock().map_err(|_| "刷新计时器锁已损坏")?;
         *current = minutes;
         self.changed.notify_all();
         Ok(minutes)
@@ -226,7 +229,11 @@ fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str)
     match source {
         "codex" => Ok(("codex-login", "Codex Analytics", CODEX_URL)),
         "deepseek" => Ok(("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL)),
-        "volcengine" => Ok(("volcengine-login", "火山方舟 Agent Plan 企业版", VOLCENGINE_URL)),
+        "volcengine" => Ok((
+            "volcengine-login",
+            "火山方舟 Agent Plan 企业版",
+            VOLCENGINE_URL,
+        )),
         _ => Err("未知数据源".into()),
     }
 }
@@ -236,7 +243,11 @@ fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
     let (label, title, url) = match source {
         "codex" => ("codex-login", "Codex Analytics", CODEX_URL),
         "deepseek" => ("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL),
-        "volcengine" => ("volcengine-login", "火山方舟 Agent Plan 企业版", VOLCENGINE_URL),
+        "volcengine" => (
+            "volcengine-login",
+            "火山方舟 Agent Plan 企业版",
+            VOLCENGINE_URL,
+        ),
         _ => unreachable!("only static sources are created"),
     };
     let parsed = url.parse().expect("static source URL must be valid");
@@ -283,7 +294,7 @@ fn background_refresh_window(
     sync_requested_at: &str,
 ) -> Result<(), String> {
     let sync_script = format!(
-        "window.__TOKEN_ON_KINDLE_SYNC__?.({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \"{sync_requested_at}\" }})"
+        "if (typeof window.__TOKEN_ON_KINDLE_SYNC__ !== 'function') {{ throw new Error('Token on Kindle sync hook unavailable'); }} void window.__TOKEN_ON_KINDLE_SYNC__({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \"{sync_requested_at}\" }})"
     );
     if window.is_focused().unwrap_or(false) {
         return window.eval(&sync_script).map_err(|error| error.to_string());
@@ -294,37 +305,56 @@ fn background_refresh_window(
         let reload_script = format!(
             "sessionStorage.setItem('__token_on_kindle_refresh_minutes', '{refresh_minutes}');sessionStorage.setItem('__token_on_kindle_sync_requested_at', '{sync_requested_at}');window.blur();location.reload()"
         );
-        window.eval(&reload_script).map_err(|error| error.to_string())?;
+        window
+            .eval(&reload_script)
+            .map_err(|error| error.to_string())?;
     } else {
-        window.eval(&sync_script).map_err(|error| error.to_string())?;
+        window
+            .eval(&sync_script)
+            .map_err(|error| error.to_string())?;
     }
     let _ = window.hide();
     Ok(())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn reload_sources(app: &AppHandle) -> Result<(), String> {
+fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
     let refresh_minutes = app.state::<AppState>().refresh.get();
     let sync_requested_at = timestamp();
-    let mut refreshed = 0;
-    for label in ["codex-login", "deepseek-login"] {
-        if let Some(window) = app.get_webview_window(label) {
-            background_refresh_window(&window, true, refresh_minutes, &sync_requested_at)?;
-            refreshed += 1;
+    let mut refreshed = Vec::new();
+    let mut failed = Vec::new();
+
+    for (label, source_name, reload_page) in [
+        ("codex-login", "Codex", true),
+        ("deepseek-login", "DeepSeek", true),
+        ("volcengine-login", "火山方舟", false),
+    ] {
+        let Some(window) = app.get_webview_window(label) else {
+            failed.push(format!("{source_name}：后台窗口不存在"));
+            continue;
+        };
+        match background_refresh_window(&window, reload_page, refresh_minutes, &sync_requested_at) {
+            Ok(()) => refreshed.push(source_name.to_string()),
+            Err(error) => failed.push(format!("{source_name}：{error}")),
         }
     }
-    if let Some(window) = app.get_webview_window("volcengine-login") {
-        background_refresh_window(&window, false, refresh_minutes, &sync_requested_at)?;
-        refreshed += 1;
+
+    if refreshed.is_empty() {
+        return Err(if failed.is_empty() {
+            "没有可刷新的后台窗口".into()
+        } else {
+            format!("所有数据源刷新失败：{}", failed.join("；"))
+        });
     }
-    if refreshed == 0 {
-        return Err("没有可刷新的后台窗口".into());
+
+    if !failed.is_empty() {
+        eprintln!("partial source refresh failure: {}", failed.join(" | "));
     }
-    Ok(())
+    Ok(RefreshSummary { refreshed, failed })
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-fn reload_sources(app: &AppHandle) -> Result<(), String> {
+fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
     let state = app.state::<AppState>();
     *state
         .mobile_refresh
@@ -332,12 +362,20 @@ fn reload_sources(app: &AppHandle) -> Result<(), String> {
         .map_err(|_| "移动端刷新状态锁已损坏")? = true;
     let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
     window
-        .navigate(CODEX_URL.parse().map_err(|error| format!("URL 错误: {error}"))?)
-        .map_err(|error| error.to_string())
+        .navigate(
+            CODEX_URL
+                .parse()
+                .map_err(|error| format!("URL 错误: {error}"))?,
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(RefreshSummary {
+        refreshed: vec!["移动端采集".into()],
+        failed: Vec::new(),
+    })
 }
 
 #[tauri::command]
-async fn refresh_sources(app: AppHandle) -> Result<(), String> {
+async fn refresh_sources(app: AppHandle) -> Result<RefreshSummary, String> {
     reload_sources(&app)
 }
 
@@ -358,11 +396,14 @@ fn validate_update_request(request: &UpdateRequest) -> Result<(), String> {
     if !request.checksum_url.ends_with("-SHA256SUMS.txt") {
         return Err("Release 缺少统一 SHA-256 校验文件".into());
     }
-    let version = request.version.strip_prefix('v').unwrap_or(&request.version);
+    let version = request
+        .version
+        .strip_prefix('v')
+        .unwrap_or(&request.version);
     if version.split('.').count() < 3
-        || !version.chars().all(|character| {
-            character.is_ascii_alphanumeric() || ".-_".contains(character)
-        })
+        || !version
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || ".-_".contains(character))
     {
         return Err("版本号格式不合法".into());
     }
@@ -398,8 +439,8 @@ async fn install_update(
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     validate_update_request(&request)?;
 
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("无法定位当前程序：{error}"))?;
+    let current_exe =
+        std::env::current_exe().map_err(|error| format!("无法定位当前程序：{error}"))?;
     let temp_root = std::env::temp_dir().join(format!(
         "token-on-kindle-update-{}-{}",
         request.version.trim_start_matches('v'),
@@ -408,8 +449,7 @@ async fn install_update(
     let extract_dir = temp_root.join("payload");
     let zip_path = temp_root.join(&request.asset_name);
     let checksum_path = temp_root.join("SHA256SUMS.txt");
-    fs::create_dir_all(&extract_dir)
-        .map_err(|error| format!("无法创建更新目录：{error}"))?;
+    fs::create_dir_all(&extract_dir).map_err(|error| format!("无法创建更新目录：{error}"))?;
 
     let download_script = temp_root.join("download-and-verify.ps1");
     fs::write(
@@ -507,7 +547,16 @@ fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
             return;
         };
         if timeout.timed_out() && !desktop::is_paused(&app) {
-            let _ = reload_sources(&app);
+            match reload_sources(&app) {
+                Ok(summary) if !summary.failed.is_empty() => {
+                    eprintln!(
+                        "scheduled refresh completed with failures: {}",
+                        summary.failed.join(" | ")
+                    );
+                }
+                Err(error) => eprintln!("scheduled refresh failed: {error}"),
+                _ => {}
+            }
         }
     });
 }
@@ -680,11 +729,7 @@ img{{display:block;width:100%;height:auto;margin:0 auto;border:0;background:#fff
     )
 }
 
-fn handle_client(
-    mut stream: TcpStream,
-    png: Arc<RwLock<Vec<u8>>>,
-    refresh: Arc<RefreshClock>,
-) {
+fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>, refresh: Arc<RefreshClock>) {
     let mut request = [0u8; 2048];
     let count = stream.read(&mut request).unwrap_or(0);
     let first_line = String::from_utf8_lossy(&request[..count]);
@@ -763,11 +808,7 @@ fn bind_http_server() -> Result<(TcpListener, u16), String> {
     Err("8765–8785 端口均被占用".into())
 }
 
-fn start_http_server(
-    listener: TcpListener,
-    png: Arc<RwLock<Vec<u8>>>,
-    refresh: Arc<RefreshClock>,
-) {
+fn start_http_server(listener: TcpListener, png: Arc<RwLock<Vec<u8>>>, refresh: Arc<RefreshClock>) {
     thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let png = Arc::clone(&png);
@@ -777,7 +818,10 @@ fn start_http_server(
     });
 }
 
-#[cfg_attr(any(target_os = "android", target_os = "ios"), tauri::mobile_entry_point)]
+#[cfg_attr(
+    any(target_os = "android", target_os = "ios"),
+    tauri::mobile_entry_point
+)]
 pub fn run() {
     let (listener, port) = bind_http_server().expect("failed to bind local HTTP server");
     let png = Arc::new(RwLock::new(Vec::new()));

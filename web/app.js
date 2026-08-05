@@ -11,6 +11,7 @@ const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
 const PUBLISH_DEBOUNCE_MS = 350;
+const PNG_WORKER_TIMEOUT_MS = 30_000;
 const SOURCES = Object.freeze([
   { id: 'codex', name: 'Codex' },
   { id: 'deepseek', name: 'DeepSeek' },
@@ -199,31 +200,40 @@ function updateRefreshUi() {
 }
 
 function rejectWorkerRequests(error) {
-  for (const request of pngWorkerRequests.values()) request.reject(error);
+  for (const request of pngWorkerRequests.values()) {
+    clearTimeout(request.timer);
+    request.reject(error);
+  }
   pngWorkerRequests.clear();
+}
+
+function resetPngWorker(error) {
+  const worker = pngWorker;
+  pngWorker = null;
+  try { worker?.terminate(); } catch { /* already stopped */ }
+  rejectWorkerRequests(error);
 }
 
 function getPngWorker() {
   if (pngWorkerFailed || typeof Worker !== 'function') return null;
   if (pngWorker) return pngWorker;
   try {
-    pngWorker = new Worker(new URL('./png-worker.js', import.meta.url), { type: 'module' });
-    pngWorker.onmessage = event => {
+    const worker = new Worker(new URL('./png-worker.js', import.meta.url), { type: 'module' });
+    pngWorker = worker;
+    worker.onmessage = event => {
       const { id, png, error } = event.data || {};
       const request = pngWorkerRequests.get(id);
       if (!request) return;
+      clearTimeout(request.timer);
       pngWorkerRequests.delete(id);
       if (error) request.reject(new Error(error));
       else request.resolve(new Uint8Array(png));
     };
-    pngWorker.onerror = event => {
-      pngWorkerFailed = true;
-      const error = new Error(event.message || 'PNG 后台线程失败');
-      rejectWorkerRequests(error);
-      pngWorker?.terminate();
-      pngWorker = null;
+    worker.onerror = event => {
+      if (pngWorker !== worker) return;
+      resetPngWorker(new Error(event.message || 'PNG 后台线程失败，已自动重建'));
     };
-    return pngWorker;
+    return worker;
   } catch {
     pngWorkerFailed = true;
     return null;
@@ -235,10 +245,15 @@ function encodeDashboardPng(width, height, rgba) {
   if (!worker) return Promise.resolve(encodeGrayscalePng(width, height, rgbaToGrayscale(rgba)));
   const id = ++pngWorkerRequestId;
   return new Promise((resolve, reject) => {
-    pngWorkerRequests.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      if (!pngWorkerRequests.has(id)) return;
+      resetPngWorker(new Error('PNG 后台线程超时，已自动重建'));
+    }, PNG_WORKER_TIMEOUT_MS);
+    pngWorkerRequests.set(id, { resolve, reject, timer });
     try {
       worker.postMessage({ id, width, height, rgba: rgba.buffer }, [rgba.buffer]);
     } catch (error) {
+      clearTimeout(timer);
       pngWorkerRequests.delete(id);
       reject(error);
     }
@@ -386,8 +401,11 @@ async function refreshNow() {
   button.disabled = true;
   document.querySelector('#service').textContent = '正在重新载入数据源…';
   try {
-    await invoke?.('refresh_sources');
-    document.querySelector('#service').textContent = serviceDescription('已触发刷新，等待页面返回');
+    const result = await invoke?.('refresh_sources');
+    const failed = Array.isArray(result?.failed) ? result.failed : [];
+    document.querySelector('#service').textContent = failed.length
+      ? serviceDescription(`已触发其余来源；${failed.join('；')}`)
+      : serviceDescription('已触发刷新，等待页面返回');
   } catch (error) {
     document.querySelector('#service').textContent = `刷新失败：${error}`;
   } finally {

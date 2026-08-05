@@ -34,7 +34,7 @@ test('updater preflights the target directory and performs recoverable replaceme
 });
 
 test('tray readiness is pushed after native tray creation and re-read by the UI', () => {
-  assert.match(desktopRust, /tray_available\.store\(true/);
+  assert.match(desktopRust, /tray_available\s*\.store\(true/);
   assert.match(desktopRust, /desktop-state-changed/);
   assert.match(desktopJs, /setTimeout\(loadDesktopState, 600\)/);
   assert.match(desktopJs, /setTimeout\(loadDesktopState, 1800\)/);

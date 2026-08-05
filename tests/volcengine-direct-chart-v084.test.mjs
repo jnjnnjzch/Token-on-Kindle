@@ -91,9 +91,8 @@ test('Volcengine overlay reads ReactECharts state without intercepting page requ
   assert.match(built, /TOKEN-ON-KINDLE DIRECT READERS BUILD/);
   assert.match(built, /__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__/);
   assert.doesNotMatch(built, /new MutationObserver/);
-  const guard = built.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
-  assert.ok(guard >= 0, 'Volcengine capture guard must be installed before canonical code');
-  assert.doesNotMatch(built, /\n\s*installVolcengineNetworkCapture\(\);/);
+  assert.doesNotMatch(built, /installVolcengineNetworkCapture/);
+  assert.doesNotMatch(built, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
 });
 
 test('diagnostic JSON preserves model names, tokens and direct chart access details', () => {

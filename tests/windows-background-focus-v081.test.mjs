@@ -8,11 +8,13 @@ const releaseExtractor = fs.readFileSync(new URL('../web/extractor.js', import.m
 
 test('background refresh reloads stateless sources but preserves the Volcengine view', () => {
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
-  assert.match(refreshBlock, /\["codex-login", "deepseek-login"\]/);
+  assert.match(refreshBlock, /\("codex-login", "Codex", true\)/);
+  assert.match(refreshBlock, /\("deepseek-login", "DeepSeek", true\)/);
+  assert.match(refreshBlock, /\("volcengine-login", "火山方舟", false\)/);
   assert.match(native, /fn background_refresh_window/);
   assert.match(native, /if reload_page/);
   assert.match(native, /location\.reload\(\)/);
-  assert.match(refreshBlock, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)\?/);
+  assert.match(refreshBlock, /Err\(error\) => failed\.push/);
 });
 
 test('hiding a source window does not summon the dashboard', () => {

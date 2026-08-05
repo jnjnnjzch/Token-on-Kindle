@@ -64,10 +64,7 @@ pub(crate) fn prepare_and_spawn(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("Token-on-Kindle.exe");
-    let staged = target_dir.join(format!(
-        ".{target_name}.{}.update.exe",
-        std::process::id()
-    ));
+    let staged = target_dir.join(format!(".{target_name}.{}.update.exe", std::process::id()));
     let helper = work_dir.join("Token-on-Kindle-update-helper.exe");
     let log_path = work_dir.join("update.log");
 
@@ -87,8 +84,7 @@ pub(crate) fn prepare_and_spawn(
     // The helper must be the downloaded new binary. Older installed versions do
     // not understand HELPER_MARKER, so copying current_exe would only relaunch
     // the old application instead of applying the update.
-    fs::copy(source_exe, &helper)
-        .map_err(|error| format!("无法创建新版本更新助手：{error}"))?;
+    fs::copy(source_exe, &helper).map_err(|error| format!("无法创建新版本更新助手：{error}"))?;
     append_log(
         &log_path,
         format!(
@@ -119,9 +115,7 @@ pub(crate) fn prepare_and_spawn(
         .map(|_| ())
         .map_err(|second_error| {
             let _ = fs::remove_file(&staged);
-            format!(
-                "无法启动独立更新助手：{second_error}（首次尝试：{first_error}）"
-            )
+            format!("无法启动独立更新助手：{second_error}（首次尝试：{first_error}）")
         }),
     }
 }
@@ -141,9 +135,9 @@ fn replace_once(staged: &Path, target: &Path, backup: &Path) -> Result<(), Strin
         let restore = fs::rename(backup, target);
         return Err(match restore {
             Ok(()) => format!("无法放置新程序，已恢复旧版本：{error}"),
-            Err(restore_error) => format!(
-                "无法放置新程序且恢复旧版本失败：{error}；恢复错误：{restore_error}"
-            ),
+            Err(restore_error) => {
+                format!("无法放置新程序且恢复旧版本失败：{error}；恢复错误：{restore_error}")
+            }
         });
     }
     Ok(())
@@ -173,7 +167,10 @@ fn run_helper(staged: PathBuf, target: PathBuf, work_dir: PathBuf) -> Result<(),
     for attempt in 1..=240 {
         match replace_once(&staged, &target, &backup) {
             Ok(()) => {
-                append_log(&log_path, format!("replacement succeeded on attempt {attempt}"));
+                append_log(
+                    &log_path,
+                    format!("replacement succeeded on attempt {attempt}"),
+                );
                 if let Err(error) = launch_replacement(&target) {
                     append_log(&log_path, &error);
                     if target.exists() {
@@ -185,7 +182,10 @@ fn run_helper(staged: PathBuf, target: PathBuf, work_dir: PathBuf) -> Result<(),
                     return Err(error);
                 }
                 thread::sleep(Duration::from_millis(800));
-                append_log(&log_path, "replacement launched successfully; backup retained for rollback");
+                append_log(
+                    &log_path,
+                    "replacement launched successfully; backup retained for rollback",
+                );
                 return Ok(());
             }
             Err(error) => {
@@ -213,7 +213,11 @@ pub(crate) fn run_from_args() -> bool {
     let staged = args.next().map(PathBuf::from);
     let target = args.next().map(PathBuf::from);
     let work_dir = args.next().map(PathBuf::from);
-    let Some((staged, target, work_dir)) = staged.zip(target).zip(work_dir).map(|((a, b), c)| (a, b, c)) else {
+    let Some((staged, target, work_dir)) = staged
+        .zip(target)
+        .zip(work_dir)
+        .map(|((a, b), c)| (a, b, c))
+    else {
         return true;
     };
     let log_path = work_dir.join("update.log");

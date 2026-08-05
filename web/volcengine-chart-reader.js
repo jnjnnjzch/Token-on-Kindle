@@ -19,12 +19,14 @@
     return parsed;
   };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const MAX_CACHED_CHART_AGE_MS = 90_000;
 
   const state = {
     section: null,
     chart: null,
     cards: new Map(),
     lastGoodChart: null,
+    lastGoodAt: 0,
     collecting: false,
     retryTimer: null,
     lastHref: location.href
@@ -75,7 +77,10 @@
   }
 
   function cachedChartFallback(diagnostics, dates, granularity) {
-    if (!state.lastGoodChart) {
+    const cacheAgeMs = state.lastGoodAt ? Date.now() - state.lastGoodAt : Number.POSITIVE_INFINITY;
+    if (!state.lastGoodChart || cacheAgeMs > MAX_CACHED_CHART_AGE_MS) {
+      state.lastGoodChart = null;
+      state.lastGoodAt = 0;
       return {
         models: [],
         periodStart: dates[0] || null,
@@ -92,6 +97,7 @@
         ...diagnostics,
         cached: true,
         cachedFrom: state.lastGoodChart.source,
+        cacheAgeMs,
         parser: state.lastGoodChart.diagnostics?.parser || null
       }
     };
@@ -140,6 +146,7 @@
       diagnostics
     };
     state.lastGoodChart = result;
+    state.lastGoodAt = Date.now();
     return result;
   }
 
@@ -232,6 +239,41 @@
     note.dataset.state = stateName;
   }
 
+  function controlText(element) {
+  return clean(element.textContent || element.getAttribute('aria-label') || element.getAttribute('title') || '');
+}
+
+function controlContext(element) {
+  let node = element;
+  let context = '';
+  for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
+    const text = clean(node.innerText || node.textContent || '');
+    if (text && text.length <= 4000) context = text;
+    if (/(模型调用明细|用量统计|AFP|开始日期|结束日期)/.test(text)) break;
+  }
+  return context;
+}
+
+function triggerDataRefresh() {
+  const roots = [sectionRoot(), document].filter(Boolean);
+  const seen = new Set();
+  for (const root of roots) {
+    for (const control of root.querySelectorAll('button,[role="button"]')) {
+      if (seen.has(control) || control.disabled || control.getAttribute('aria-disabled') === 'true') continue;
+      seen.add(control);
+        if (!control.isConnected) continue;
+      const label = controlText(control);
+      if (!/^(查询|刷新|搜索|更新|query|refresh|search|update)$/i.test(label)) continue;
+      if (!/(模型调用明细|用量统计|AFP|开始日期|结束日期)/.test(controlContext(control))) continue;
+      try {
+        control.click();
+        return label;
+      } catch { /* fall through to the next matching control */ }
+    }
+  }
+  return null;
+}
+
   function scheduleRetry(options, delay = 1200) {
     if (state.retryTimer) clearTimeout(state.retryTimer);
     state.retryTimer = setTimeout(() => {
@@ -245,7 +287,16 @@
     state.collecting = true;
     applySyncOptions(options);
     try {
-      await sleep(40);
+      let refreshAction = null;
+      if (!options.retry && (options.manual || options.automatic)) {
+        refreshAction = triggerDataRefresh();
+      }
+      if (refreshAction) {
+        resetDomCache(true);
+        await sleep(900);
+      } else {
+        await sleep(40);
+      }
       const windows = WINDOWS.map(collectWindow).filter(Boolean);
       if (windows.length !== WINDOWS.length) {
         toolbarStatus('等待企业版 AFP 用量页面就绪', 'warning');
@@ -273,7 +324,8 @@
           usageViewReady: true,
           modelUsageSource: chart.source,
           modelCount: chart.models.length,
-          modelChart: chart.diagnostics
+          modelChart: chart.diagnostics,
+          refreshAction
         }
       };
       signal(payload);
@@ -302,10 +354,14 @@
     }
   }
 
-  function resetDomCache() {
+  function resetDomCache(clearLastGood = false) {
     state.section = null;
     state.chart = null;
     state.cards.clear();
+    if (clearLastGood) {
+      state.lastGoodChart = null;
+      state.lastGoodAt = 0;
+    }
   }
 
   function start() {
@@ -319,19 +375,19 @@
   }
 
   window.addEventListener('pageshow', () => {
-    resetDomCache();
+    resetDomCache(true);
     installSyncOverride();
     scheduleRetry({ automatic: true, pageshow: true }, 500);
   });
   window.addEventListener('popstate', () => {
     if (location.href === state.lastHref) return;
     state.lastHref = location.href;
-    resetDomCache();
+    resetDomCache(true);
     scheduleRetry({ automatic: true, navigation: true }, 700);
   });
   window.addEventListener('hashchange', () => {
     state.lastHref = location.href;
-    resetDomCache();
+    resetDomCache(true);
     scheduleRetry({ automatic: true, navigation: true }, 700);
   });
   document.addEventListener('visibilitychange', () => {

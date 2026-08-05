@@ -6,8 +6,17 @@
 - Kindle 浏览器、KOReader、Online Screensaver 与 linkss 读取同一张 `/dashboard.png`。
 - 账号 Cookie 只保存在操作系统分配给应用的 WebView 数据目录，不会发送给 Kindle。
 
-当前稳定版：**v0.9.4**  
-[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.4)
+当前稳定版：**v0.9.5**
+[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.5)
+
+## v0.9.5 长期运行稳定性修复
+
+- 三个数据源独立刷新；某个 WebView 失败不会阻断其他来源。
+- 火山方舟继续保留企业版 SPA 页面，同时在当前视图内触发“查询/刷新”后再读取 AFP 与模型图表。
+- 同步钩子缺失不再静默成功，并会在控制中心显示部分失败来源。
+- 火山图表缓存超过 90 秒后失效，避免长期重复发送旧结果。
+- PNG 后台线程增加 30 秒超时、终止和自动重建，避免图片发布永久卡住。
+- 删除未使用的火山完整响应缓存与遗留读取路径。
 
 ## v0.9.4 重点修复
 
@@ -123,11 +132,11 @@ http://192.168.1.20:8765/healthz        服务状态
 
 | 平台 | Release 文件 | 说明 |
 |---|---|---|
-| Windows x64 | `Token-on-Kindle-v0.9.4-windows-x64.zip` | 主要支持平台；便携 EXE；支持应用内自动更新和重启 |
-| macOS arm64 | `Token-on-Kindle-v0.9.4-macos-arm64.zip` | `.app` ZIP；使用系统 WKWebView；更新后手动替换应用 |
-| Linux x64 | `Token-on-Kindle-v0.9.4-linux-x64.AppImage` | AppImage；更新后手动替换文件 |
-| Android arm64 | `Token-on-Kindle-v0.9.4-android-arm64-debug.apk` | debug APK；不提供桌面托盘和开机启动控制 |
-| KOReader | `Token-on-Kindle-v0.9.4-koreader-plugin.zip` | 从局域网同步 PNG，并用于休眠屏幕 |
+| Windows x64 | `Token-on-Kindle-v0.9.5-windows-x64.zip` | 主要支持平台；便携 EXE；支持应用内自动更新和重启 |
+| macOS arm64 | `Token-on-Kindle-v0.9.5-macos-arm64.zip` | `.app` ZIP；使用系统 WKWebView；更新后手动替换应用 |
+| Linux x64 | `Token-on-Kindle-v0.9.5-linux-x64.AppImage` | AppImage；更新后手动替换文件 |
+| Android arm64 | `Token-on-Kindle-v0.9.5-android-arm64-debug.apk` | debug APK；不提供桌面托盘和开机启动控制 |
+| KOReader | `Token-on-Kindle-v0.9.5-koreader-plugin.zip` | 从局域网同步 PNG，并用于休眠屏幕 |
 
 每个 Release 同时提供统一的 `SHA256SUMS.txt`。
 

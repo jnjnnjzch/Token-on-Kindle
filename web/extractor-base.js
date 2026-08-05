@@ -138,76 +138,6 @@
 
   installDeepSeekNetworkCapture();
 
-  function installVolcengineNetworkCapture() {
-    if (source !== 'volcengine' || window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__) return;
-    window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
-    const store = window.__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__ = window.__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__ || [];
-    let order = store.at(-1)?.order || 0;
-
-    const relevant = rawUrl => {
-      try {
-        const url = new URL(String(rawUrl || ''), location.href);
-        if (!/(?:^|\.)(?:volcengine\.com|volces\.com|volcengineapi\.com)$/i.test(url.hostname)) return false;
-        const target = `${url.pathname} ${url.search}`;
-        return /(GetSeatUsageDetails|GetUsageDetails|GetSeatAFPUsage|ListSeatAFPUsage)/i.test(target)
-          || /(?:agent[-_ ]?plan|seat).*(?:usage|token|detail|stat)/i.test(target)
-          || /(?:usage|token|detail|stat).*(?:agent[-_ ]?plan|seat)/i.test(target);
-      } catch {
-        return false;
-      }
-    };
-
-    const remember = (rawUrl, body, transport) => {
-      if (!relevant(rawUrl) || !body || typeof body !== 'object') return;
-      store.push({
-        order: ++order,
-        path: safePath(rawUrl),
-        transport,
-        capturedAt: new Date().toISOString(),
-        body
-      });
-      if (store.length > 80) store.splice(0, store.length - 80);
-    };
-
-    const originalFetch = window.fetch?.bind(window);
-    if (originalFetch) {
-      window.fetch = async (...args) => {
-        const response = await originalFetch(...args);
-        const rawUrl = response.url || args[0]?.url || args[0];
-        if (relevant(rawUrl)) {
-          response.clone().text().then(text => {
-            if (!text || text.length > 12_000_000) return;
-            try { remember(rawUrl, JSON.parse(text), 'fetch'); } catch { /* non-JSON response */ }
-          }).catch(() => {});
-        }
-        return response;
-      };
-    }
-
-    const proto = window.XMLHttpRequest?.prototype;
-    if (proto && !proto.__tokenOnKindleVolcengineWrapped) {
-      proto.__tokenOnKindleVolcengineWrapped = true;
-      const originalOpen = proto.open;
-      const originalSend = proto.send;
-      proto.open = function(method, url, ...rest) {
-        this.__tokenOnKindleVolcengineUrl = url;
-        return originalOpen.call(this, method, url, ...rest);
-      };
-      proto.send = function(...args) {
-        this.addEventListener('load', () => {
-          const rawUrl = this.responseURL || this.__tokenOnKindleVolcengineUrl;
-          if (!relevant(rawUrl)) return;
-          try {
-            const body = this.responseType === 'json' ? this.response : JSON.parse(this.responseText || '');
-            remember(rawUrl, body, 'xhr');
-          } catch { /* non-JSON response */ }
-        }, { once: true });
-        return originalSend.apply(this, args);
-      };
-    }
-  }
-
-  installVolcengineNetworkCapture();
 
   function resetText(text) {
     const match = text.match(/(?:reset(?:s| at)?|next reset|renew(?:s|al)?|重置|恢复|下次重置)[：:\s]*([^\n|]{1,80})/i);
@@ -547,11 +477,8 @@
 
   function collectVolcengine() {
     const windows = VOLCENGINE_WINDOWS.map(collectVolcengineWindow).filter(Boolean);
-    const networkResponses = [...(window.__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__ || [])];
-    const parsed = window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__?.(networkResponses) || null;
-    const domModels = parsed?.models?.length ? [] : volcengineModelsFromDom();
-    const models = parsed?.models?.length ? parsed.models : domModels;
-    const modelUsageSource = parsed?.models?.length ? 'http' : domModels.length ? 'dom' : 'none';
+    const models = volcengineModelsFromDom();
+    const modelUsageSource = models.length ? 'dom' : 'none';
     return {
       source,
       capturedAt: new Date().toISOString(),
@@ -561,8 +488,8 @@
       models,
       modelUsage: {
         source: modelUsageSource,
-        sourcePath: parsed?.sourcePath || null,
-        capturedAt: parsed?.capturedAt || null
+        sourcePath: null,
+        capturedAt: null
       },
       url: location.href,
       diagnostics: {
@@ -571,9 +498,7 @@
         quotaCount: windows.length,
         usageViewReady: volcengineUsageReady(),
         modelUsageSource,
-        modelCount: models.length,
-        networkResponseCount: networkResponses.length,
-        modelParser: parsed?.diagnostics || null
+        modelCount: models.length
       }
     };
   }
