@@ -24,11 +24,14 @@ jobs:
       - name: Apply startup stability patch
         run: |
           python3 tools/one-shot-v096-main-startup.py
+          git checkout -- web/png-worker.js
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
           node tools/sync-version.mjs v0.9.6
           cargo fmt --manifest-path src-tauri/Cargo.toml
           rm -f package-lock.json
+          rm -f tools/one-shot-v096-main-startup.py
+          rm -f .github/workflows/one-shot-v096-main-startup.yml
 
       - name: Install dependencies
         run: npm install --no-package-lock
@@ -48,10 +51,8 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo check --manifest-path src-tauri/Cargo.toml
 
-      - name: Remove temporary patch files and commit
+      - name: Commit verified fix
         run: |
-          rm -f tools/one-shot-v096-main-startup.py
-          rm -f .github/workflows/one-shot-v096-main-startup.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git diff --check
