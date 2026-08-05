@@ -23,6 +23,14 @@ jobs:
 
       - name: Apply final product patch
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/one-shot-v095-final.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('# Hidden native WebViews')
+          end = text.index('# Update legacy tests', start)
+          path.write_text(text[:start] + text[end:], encoding='utf-8')
+          PY
           python3 tools/one-shot-v095-final.py
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
