@@ -19,6 +19,13 @@ canonical = canonical.replace(
   /\n\s*installVolcengineNetworkCapture\(\);/g,
   '\n  // Volcengine reads rendered ReactECharts state; request interception stays disabled.'
 );
+canonical = canonical.replace(`  window.addEventListener('beforeunload', () => {
+    if (!document.hasFocus()) {
+      try { window.close(); } catch { /* native window guard */ }
+    }
+  });
+
+`, '');
 const observerStart = canonical.indexOf("  let autoCapturedView = '';");
 if (observerStart >= 0) {
   const readyHandler = canonical.indexOf("\n\n  if (document.readyState === 'loading')", observerStart);
@@ -37,6 +44,7 @@ if (observerStart >= 0) {
   canonical = `${canonical.slice(0, observerStart)}${stableStart}${canonical.slice(readyHandler)}`;
 }
 if (canonical.includes('new MutationObserver')) throw new Error('canonical extractor observer shape changed');
+if (canonical.includes("window.addEventListener('beforeunload'")) throw new Error('background close-on-reload handler remains active');
 
 const moduleFunction = async (url, from, to) => lf(await readFile(url, 'utf8')).replace(from, to);
 const deepseekParser = await moduleFunction(deepseekParserUrl, 'export function parseDeepSeekResponses', 'function parseDeepSeekResponses');
@@ -73,6 +81,7 @@ const output = `${GENERATED}\n${deepseekModules}\n${volcengineModules}\n${BASE_S
 if (!output.includes('platform-internal-api')) throw new Error('DeepSeek direct reader missing');
 if (!output.includes('getEchartsInstance')) throw new Error('Volcengine direct reader missing');
 if (output.includes('new MutationObserver')) throw new Error('continuous DOM observer remains active');
+if (output.includes("window.addEventListener('beforeunload'")) throw new Error('close-on-reload handler remains active');
 if (/\n\s*installVolcengineNetworkCapture\(\);/.test(output)) throw new Error('legacy Volcengine interception remains active');
 const current = await readFile(extractorUrl, 'utf8').catch(() => '');
 if (lf(current) !== output) await writeFile(extractorUrl, output);
