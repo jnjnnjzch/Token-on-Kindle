@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -169,17 +170,19 @@ marker = "  'use strict';\n  const defined = object =>"
 assert marker in text, "signal compactor bootstrap changed"
 text = text.replace(marker, "  'use strict';\n" + bridge_bootstrap + "  const defined = object =>", 1)
 
-title_line = "    document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;\n"
-assert title_line in text, "canonical title signal changed"
-text = text.replace(
-    title_line,
-    title_line + "    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);\n",
-    1,
-)
-old_hide = "  hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };"
-new_hide = "  hide.onclick = () => {\n    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');\n  };"
-assert old_hide in text, "source hide handler changed"
-text = text.replace(old_hide, new_hide, 1)
+canonical_marker = "canonical = canonical.replace(\n  'hide.onclick = () => window.close();',"
+assert canonical_marker in text, "canonical replacement chain changed"
+canonical_signal_replace = '''canonical = canonical.replace(
+  "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;",
+  "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;\\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);"
+);
+'''
+text = text.replace(canonical_marker, canonical_signal_replace + canonical_marker, 1)
+
+old_hide_compose = "  \"hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };\""
+new_hide_output = "hide.onclick = () => {\n    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');\n  };"
+assert old_hide_compose in text, "source hide compose output changed"
+text = text.replace(old_hide_compose, "  " + json.dumps(new_hide_output, ensure_ascii=False), 1)
 
 deepseek_line = "    document.title = `__TOKEN_ON_KINDLE__:deepseek:${encodeSignal(payload)}`;"
 deepseek_new = "    const encoded = encodeSignal(payload);\n    document.title = `__TOKEN_ON_KINDLE__:deepseek:${encoded}`;\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'deepseek', encoded);"
