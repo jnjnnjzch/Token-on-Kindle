@@ -11,7 +11,6 @@ const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
 const PUBLISH_DEBOUNCE_MS = 350;
-const PNG_WORKER_TIMEOUT_MS = 30_000;
 const SOURCES = Object.freeze([
   { id: 'codex', name: 'Codex' },
   { id: 'deepseek', name: 'DeepSeek' },
@@ -33,10 +32,6 @@ let publishTimer = null;
 let publishInFlight = null;
 let publishQueued = false;
 let refreshInFlight = false;
-let pngWorker = null;
-let pngWorkerFailed = false;
-let pngWorkerRequestId = 0;
-const pngWorkerRequests = new Map();
 
 const numeric = value => {
   const raw = typeof value === 'object' && value !== null ? value.value : value;
@@ -199,67 +194,6 @@ function updateRefreshUi() {
   document.querySelector('#refresh-value').textContent = refreshDescription(state.refreshMinutes);
 }
 
-function rejectWorkerRequests(error) {
-  for (const request of pngWorkerRequests.values()) {
-    clearTimeout(request.timer);
-    request.reject(error);
-  }
-  pngWorkerRequests.clear();
-}
-
-function resetPngWorker(error) {
-  const worker = pngWorker;
-  pngWorker = null;
-  try { worker?.terminate(); } catch { /* already stopped */ }
-  rejectWorkerRequests(error);
-}
-
-function getPngWorker() {
-  if (pngWorkerFailed || typeof Worker !== 'function') return null;
-  if (pngWorker) return pngWorker;
-  try {
-    const worker = new Worker(new URL('./png-worker.js', import.meta.url), { type: 'module' });
-    pngWorker = worker;
-    worker.onmessage = event => {
-      const { id, png, error } = event.data || {};
-      const request = pngWorkerRequests.get(id);
-      if (!request) return;
-      clearTimeout(request.timer);
-      pngWorkerRequests.delete(id);
-      if (error) request.reject(new Error(error));
-      else request.resolve(new Uint8Array(png));
-    };
-    worker.onerror = event => {
-      if (pngWorker !== worker) return;
-      resetPngWorker(new Error(event.message || 'PNG 后台线程失败，已自动重建'));
-    };
-    return worker;
-  } catch {
-    pngWorkerFailed = true;
-    return null;
-  }
-}
-
-function encodeDashboardPng(width, height, rgba) {
-  const worker = getPngWorker();
-  if (!worker) return Promise.resolve(encodeGrayscalePng(width, height, rgbaToGrayscale(rgba)));
-  const id = ++pngWorkerRequestId;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (!pngWorkerRequests.has(id)) return;
-      resetPngWorker(new Error('PNG 后台线程超时，已自动重建'));
-    }, PNG_WORKER_TIMEOUT_MS);
-    pngWorkerRequests.set(id, { resolve, reject, timer });
-    try {
-      worker.postMessage({ id, width, height, rgba: rgba.buffer }, [rgba.buffer]);
-    } catch (error) {
-      clearTimeout(timer);
-      pngWorkerRequests.delete(id);
-      reject(error);
-    }
-  });
-}
-
 async function renderAndStoreDashboard() {
   renderPreview();
   if (!invoke) return;
@@ -270,7 +204,7 @@ async function renderAndStoreDashboard() {
   const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
   renderToContext(outputCtx, profile.width, profile.height);
   const rgba = outputCtx.getImageData(0, 0, profile.width, profile.height).data;
-  const png = await encodeDashboardPng(profile.width, profile.height, rgba);
+  const png = encodeGrayscalePng(profile.width, profile.height, rgbaToGrayscale(rgba));
   const check = verifyKindlePng(png, profile.width, profile.height);
   if (!check.ok) throw new Error(check.error);
   await invoke('set_dashboard_png', { bytes: Array.from(png), profile: profile.id });

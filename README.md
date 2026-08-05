@@ -6,8 +6,15 @@
 - Kindle 浏览器、KOReader、Online Screensaver 与 linkss 读取同一张 `/dashboard.png`。
 - 账号 Cookie 只保存在操作系统分配给应用的 WebView 数据目录，不会发送给 Kindle。
 
-当前稳定版：**v0.9.5**
-[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.5)
+当前稳定版：**v0.9.6**
+[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.6)
+
+## v0.9.6 主界面启动稳定性修复
+
+- 主窗口不再依赖 Codex、DeepSeek 或火山方舟外部 WebView 创建成功。
+- 三个数据源窗口改为首次点击时按需创建；单个页面创建失败只会显示来源错误，不会终止主程序。
+- 主窗口不再注入仅供外部页面使用的采集脚本。
+- PNG 生成恢复 v0.6.2 的直接编码路径，移除启动阶段的模块 Worker。
 
 ## v0.9.5 长期运行稳定性修复
 

@@ -239,7 +239,7 @@ fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
+fn create_source_window(app: &AppHandle, source: &str) -> tauri::Result<()> {
     let (label, title, url) = match source {
         "codex" => ("codex-login", "Codex Analytics", CODEX_URL),
         "deepseek" => ("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL),
@@ -264,9 +264,14 @@ fn create_source_window(app: &tauri::App, source: &str) -> tauri::Result<()> {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
     let (label, _, _) = source_url(source)?;
-    let window = app
-        .get_webview_window(label)
-        .ok_or_else(|| format!("{label} 后台窗口尚未创建"))?;
+    let window = if let Some(window) = app.get_webview_window(label) {
+        window
+    } else {
+        create_source_window(app, source)
+            .map_err(|error| format!("无法创建 {label} 数据源窗口：{error}"))?;
+        app.get_webview_window(label)
+            .ok_or_else(|| format!("{label} 数据源窗口创建后不可用"))?
+    };
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
@@ -862,16 +867,8 @@ pub fn run() {
                 .title("Token on Kindle")
                 .inner_size(1180.0, 820.0)
                 .min_inner_size(820.0, 620.0)
-                .initialization_script(EXTRACTOR_SCRIPT)
                 .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
-
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                create_source_window(app, "codex")?;
-                create_source_window(app, "deepseek")?;
-                create_source_window(app, "volcengine")?;
-            }
 
             start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));
             if let Err(error) = desktop::build_tray(app) {

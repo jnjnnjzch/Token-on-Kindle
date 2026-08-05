@@ -27,12 +27,9 @@ test('Volcengine refreshes the current SPA controls and expires stale chart fall
   assert.match(reader, /resetDomCache\(true\)/);
 });
 
-test('PNG worker timeouts reject pending work and allow a new worker', () => {
-  assert.match(app, /PNG_WORKER_TIMEOUT_MS = 30_000/);
-  assert.match(app, /function resetPngWorker\(error\)/);
-  assert.match(app, /PNG 后台线程超时，已自动重建/);
-  assert.match(app, /clearTimeout\(request\.timer\)/);
+test('partial refresh failures remain visible in the control center', () => {
   assert.match(app, /result\?\.failed/);
+  assert.match(app, /已触发其余来源/);
 });
 
 test('unused Volcengine full-response cache is absent from source and release extractor', () => {
