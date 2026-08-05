@@ -24,6 +24,7 @@ jobs:
       - name: Apply startup stability patch
         run: |
           python3 tools/one-shot-v096-main-startup.py
+          python3 tools/one-shot-v096-refresh-test.py
           git checkout -- web/png-worker.js
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
@@ -31,6 +32,7 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml
           rm -f package-lock.json
           rm -f tools/one-shot-v096-main-startup.py
+          rm -f tools/one-shot-v096-refresh-test.py
           rm -f .github/workflows/one-shot-v096-main-startup.yml
 
       - name: Install dependencies
