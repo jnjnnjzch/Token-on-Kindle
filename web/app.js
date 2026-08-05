@@ -10,6 +10,9 @@ const DISPLAY_STORAGE_KEY = 'token-on-kindle:display-sources-v2';
 const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
+const PUBLISH_DEBOUNCE_MS = 500;
+const REFRESH_COMMAND_TIMEOUT_MS = 12_000;
+const REFRESH_COOLDOWN_MS = 15_000;
 const SOURCES = Object.freeze([
   { id: 'codex', name: 'Codex' },
   { id: 'deepseek', name: 'DeepSeek' },
@@ -26,7 +29,14 @@ let state = {
 let displaySources = loadDisplaySources();
 const canvas = document.querySelector('#dashboard');
 const previewCtx = canvas.getContext('2d', { willReadFrequently: true });
+const outputCanvas = document.createElement('canvas');
+const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
 let selectedProfileId = localStorage.getItem('token-on-kindle:profile') || DEFAULT_PROFILE_ID;
+let publishTimer = null;
+let publishPromise = null;
+let publishDirty = false;
+let refreshInFlight = false;
+let lastRefreshRequestedAt = 0;
 
 const numeric = value => {
   const raw = typeof value === 'object' && value !== null ? value.value : value;
@@ -142,6 +152,10 @@ function updateProfileUi() {
   document.querySelector('#profile-description').textContent = profile.models;
 }
 
+function reportPublishError(error) {
+  document.querySelector('#service').textContent = `生成失败：${error?.message || error}`;
+}
+
 function initializeProfileSelect() {
   const select = document.querySelector('#kindle-profile');
   select.replaceChildren(...KINDLE_PROFILES.map(profile => {
@@ -156,9 +170,7 @@ function initializeProfileSelect() {
     selectedProfileId = getKindleProfile(select.value).id;
     localStorage.setItem('token-on-kindle:profile', selectedProfileId);
     updateProfileUi();
-    publish().catch(error => {
-      document.querySelector('#service').textContent = `生成失败：${error.message}`;
-    });
+    schedulePublish(0);
   });
   updateProfileUi();
 }
@@ -177,9 +189,7 @@ function initializeSourceSelection() {
       }
       displaySources = next;
       saveDisplaySources();
-      publish().catch(error => {
-        document.querySelector('#service').textContent = `生成失败：${error.message}`;
-      });
+      schedulePublish(0);
     });
   }
 }
@@ -189,19 +199,52 @@ function updateRefreshUi() {
   document.querySelector('#refresh-value').textContent = refreshDescription(state.refreshMinutes);
 }
 
-async function publish() {
+function yieldToUi() {
+  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
+async function renderAndStoreDashboard() {
   renderPreview();
+  if (!invoke) return;
+  await yieldToUi();
   const profile = getKindleProfile(selectedProfileId);
-  const outputCanvas = document.createElement('canvas');
-  outputCanvas.width = profile.width;
-  outputCanvas.height = profile.height;
-  const outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true });
+  if (outputCanvas.width !== profile.width) outputCanvas.width = profile.width;
+  if (outputCanvas.height !== profile.height) outputCanvas.height = profile.height;
   renderToContext(outputCtx, profile.width, profile.height);
   const rgba = outputCtx.getImageData(0, 0, profile.width, profile.height).data;
   const png = encodeGrayscalePng(profile.width, profile.height, rgbaToGrayscale(rgba));
   const check = verifyKindlePng(png, profile.width, profile.height);
   if (!check.ok) throw new Error(check.error);
-  if (invoke) await invoke('set_dashboard_png', { bytes: Array.from(png), profile: profile.id });
+  await invoke('set_dashboard_png', { bytes: Array.from(png), profile: profile.id });
+}
+
+async function publish() {
+  if (publishTimer) {
+    clearTimeout(publishTimer);
+    publishTimer = null;
+  }
+  publishDirty = true;
+  if (publishPromise) return publishPromise;
+  publishPromise = (async () => {
+    while (publishDirty) {
+      publishDirty = false;
+      await renderAndStoreDashboard();
+    }
+  })().finally(() => {
+    publishPromise = null;
+  });
+  return publishPromise;
+}
+
+function schedulePublish(delay = PUBLISH_DEBOUNCE_MS) {
+  renderPreview();
+  publishDirty = true;
+  if (!invoke) return;
+  if (publishTimer) clearTimeout(publishTimer);
+  publishTimer = setTimeout(() => {
+    publishTimer = null;
+    publish().catch(reportPublishError);
+  }, delay);
 }
 
 function updateUi() {
@@ -212,9 +255,7 @@ function updateUi() {
     if (panel) panel.textContent = diagnostic ? JSON.stringify(diagnostic, null, 2) : '尚未采集';
   }
   updateRefreshUi();
-  publish().catch(error => {
-    document.querySelector('#service').textContent = `生成失败：${error.message}`;
-  });
+  schedulePublish();
 }
 
 async function applySavedRefreshInterval() {
@@ -291,19 +332,40 @@ async function openSource(source) {
   }
 }
 
+function invokeWithTimeout(command, args, timeoutMs) {
+  let timer;
+  return Promise.race([
+    invoke?.(command, args),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('刷新命令等待超时')), timeoutMs);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function refreshNow() {
   const button = document.querySelector('#refresh');
+  const now = Date.now();
+  if (refreshInFlight || now - lastRefreshRequestedAt < REFRESH_COOLDOWN_MS) {
+    document.querySelector('#service').textContent = serviceDescription('刷新已经在进行，请等待数据返回');
+    return;
+  }
+  refreshInFlight = true;
+  lastRefreshRequestedAt = now;
   button.disabled = true;
   document.querySelector('#service').textContent = '正在刷新数据源；火山方舟保留当前企业版用量视图…';
   try {
-    await invoke?.('refresh_sources');
+    await invokeWithTimeout('refresh_sources', undefined, REFRESH_COMMAND_TIMEOUT_MS);
+    document.querySelector('#service').textContent = serviceDescription('已触发刷新，等待页面返回');
+  } catch (error) {
+    const message = String(error?.message || error);
+    document.querySelector('#service').textContent = message.includes('等待超时')
+      ? serviceDescription('后台刷新仍在继续，界面已恢复响应')
+      : `刷新失败：${message}`;
+  } finally {
     setTimeout(() => {
-      document.querySelector('#service').textContent = serviceDescription('已触发刷新，等待页面返回');
+      refreshInFlight = false;
       button.disabled = false;
     }, 700);
-  } catch (error) {
-    button.disabled = false;
-    document.querySelector('#service').textContent = `刷新失败：${error}`;
   }
 }
 
