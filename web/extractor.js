@@ -1,4 +1,107 @@
+/* TOKEN-ON-KINDLE DIRECT READERS BUILD */
 (() => {
+  'use strict';
+  const BRIDGE_ORIGIN = 'https://token-on-kindle.invalid';
+  let bridgeSequence = 0;
+  window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__ = (kind, value, encoded = '') => {
+    const path = kind === 'signal'
+      ? '/signal/' + encodeURIComponent(value) + '/' + encoded
+      : '/action/' + encodeURIComponent(value);
+    const url = BRIDGE_ORIGIN + path + '?nonce=' + Date.now() + '-' + (++bridgeSequence);
+    try {
+      location.assign(url);
+      return true;
+    } catch (error) {
+      console.error('[Token on Kindle] navigation bridge failed', error);
+      return false;
+    }
+  };
+  const defined = object => Object.fromEntries(Object.entries(object || {}).filter(([, value]) => value !== undefined));
+  const compactDeepSeekModel = model => model ? defined({
+    name: model.name,
+    date: model.date,
+    tokens: model.tokens,
+    cost: model.cost,
+    cacheHitTokens: model.cacheHitTokens,
+    cacheMissTokens: model.cacheMissTokens,
+    outputTokens: model.outputTokens,
+    cacheRate: model.cacheRate,
+    requests: model.requests
+  }) : null;
+  const compactVolcengineModel = model => model ? defined({
+    id: model.id,
+    name: model.name,
+    totalTokens: model.totalTokens ?? model.tokens,
+    latestTokens: model.latestTokens,
+    peakTokens: model.peakTokens,
+    pointCount: model.pointCount,
+    inputTokens: model.inputTokens,
+    outputTokens: model.outputTokens,
+    cachedTokens: model.cachedTokens,
+    requests: model.requests,
+    afp: model.afp
+  }) : null;
+
+  window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__ = (source, payload = {}) => {
+    const common = defined({
+      source,
+      capturedAt: payload.capturedAt,
+      updateIntervalMinutes: payload.updateIntervalMinutes,
+      syncRequestedAt: payload.syncRequestedAt
+    });
+    if (source === 'codex') {
+      return defined({
+        ...common,
+        account: payload.account,
+        quotas: Array.isArray(payload.quotas) ? payload.quotas : []
+      });
+    }
+    if (source === 'deepseek') {
+      return defined({
+        ...common,
+        balance: payload.balance,
+        date: payload.date,
+        todayCost: payload.todayCost,
+        todayTokens: payload.todayTokens,
+        todayRequests: payload.todayRequests,
+        cacheRate: payload.cacheRate,
+        models: {
+          flash: compactDeepSeekModel(payload.models?.flash),
+          pro: compactDeepSeekModel(payload.models?.pro)
+        },
+        account: payload.account,
+        range: payload.range,
+        diagnostics: defined({
+          primarySource: payload.diagnostics?.primarySource,
+          directError: payload.diagnostics?.directError
+        })
+      });
+    }
+    return defined({
+      ...common,
+      plan: payload.plan,
+      unit: payload.unit,
+      windows: Array.isArray(payload.windows) ? payload.windows : [],
+      models: Array.isArray(payload.models) ? payload.models.map(compactVolcengineModel).filter(Boolean) : [],
+      modelUsage: payload.modelUsage ? defined({
+        source: payload.modelUsage.source,
+        periodStart: payload.modelUsage.periodStart,
+        periodEnd: payload.modelUsage.periodEnd,
+        granularity: payload.modelUsage.granularity
+      }) : undefined,
+      diagnostics: defined({
+        primarySource: payload.diagnostics?.primarySource,
+        instruction: payload.diagnostics?.instruction,
+        quotaCount: payload.diagnostics?.quotaCount,
+        usageViewReady: payload.diagnostics?.usageViewReady,
+        modelUsageSource: payload.diagnostics?.modelUsageSource,
+        modelCount: payload.diagnostics?.modelCount
+      })
+    });
+  };
+})();
+(() => {
+  if (!location.hostname.endsWith('deepseek.com')) return;
 const DATE_RE = /20\d{2}[-/]\d{1,2}[-/]\d{1,2}/;
 const MODEL_RE = /deepseek[-_ ]?v?4[-_ ]?(flash|pro)|(?:^|[-_ ])(flash|pro)(?:$|[-_ ])/i;
 
@@ -297,167 +400,583 @@ function parseDeepSeekResponses(responses, now = new Date()) {
   };
 }
 
-window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;
+  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK__ = parseDeepSeekResponses;
 })();
 (() => {
-const cleanKey = value => String(value ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+  if (!location.hostname.endsWith('deepseek.com')) return;
+const normalizeLine = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
 
-const finiteNumber = value => {
-  if (value == null || value === '' || typeof value === 'boolean') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const text = String(value).replaceAll(',', '').trim();
-  const match = text.match(/^-?\d+(?:\.\d+)?(?:万|亿)?$/);
-  if (!match) return null;
-  const base = Number(text.replace(/[万亿]$/, ''));
-  if (!Number.isFinite(base)) return null;
-  return text.endsWith('亿') ? base * 100_000_000 : text.endsWith('万') ? base * 10_000 : base;
-};
+const SUMMARY_LABEL = /^(cost|api requests|tokens|balance|费用|消耗|请求|余额)$/i;
 
-const MODEL_KEY = /^(model|modelname|modelid|foundationmodel|foundationmodelname|endpointmodel|sku|modeldisplayname)$/;
-const GENERIC_MODEL_TEXT = /^(全部模型|all models?|模型|model|unknown|null|undefined|-|--)$/i;
-
-function looksLikeModelName(value, path = '') {
-  const text = String(value ?? '').trim();
-  if (!text || text.length > 120 || GENERIC_MODEL_TEXT.test(text)) return false;
-  if (/^20\d{2}[-/]\d{1,2}[-/]\d{1,2}/.test(text)) return false;
-  if (/^[\d,.%/\s]+$/.test(text)) return false;
-  if (/(doubao|deepseek|seed|kimi|qwen|glm|moonshot|minimax|vision|speech|embedding|rerank|豆包|模型)/i.test(text)) return true;
-  return /(model|usage|detail|token|seat)/i.test(path) && /[A-Za-z\u4e00-\u9fff]/.test(text);
+function numeric(value) {
+  const match = String(value ?? '').replaceAll(',', '').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
 }
 
-function metricFromKey(rawKey) {
-  const key = cleanKey(rawKey);
-  if (!key) return null;
-  if (/(cachehit|cached|cachetoken)/.test(key) && /(token|amount|count|usage)/.test(key)) return 'cachedTokens';
-  if (/(input|prompt|requestinput)/.test(key) && /(token|amount|count|usage)/.test(key) && !/cache/.test(key)) return 'inputTokens';
-  if (/(output|completion|response)/.test(key) && /(token|amount|count|usage)/.test(key)) return 'outputTokens';
-  if (/^(totaltokens?|tokenstotal|tokenusage|usedtokens?|tokens?|tokencount|total_token)$/.test(key)) return 'totalTokens';
-  if (/(request|call)/.test(key) && /(count|total|times|number|num|usage|^requests?$|^calls?$)/.test(key)) return 'requests';
-  if (/(afp|fuel)/.test(key) && /(usage|amount|count|used|consume|total|value)/.test(key)) return 'afp';
-  return null;
+function money(value) {
+  const compact = String(value ?? '').replaceAll(',', '');
+  const match = compact.match(/(?:¥|￥|CNY|RMB)\s*(-?\d+(?:\.\d+)?)/i)
+    || compact.match(/(-?\d+(?:\.\d+)?)\s*(?:元|CNY|RMB)/i);
+  return match ? Number(match[1]) : null;
 }
 
-function modelNameFromObject(object, path) {
-  const entries = Object.entries(object || {});
-  const preferred = entries.filter(([key]) => MODEL_KEY.test(cleanKey(key)));
-  const fallback = entries.filter(([key]) => /(^|_)(name|displayname)$|名称$/i.test(key));
-  for (const [key, value] of [...preferred, ...fallback]) {
-    if ((typeof value === 'string' || typeof value === 'number') && looksLikeModelName(value, `${path}.${key}`)) {
-      return String(value).trim();
+function valueAfterExactLabel(lines, labels, parser) {
+  const normalizedLabels = labels.map(label => label.toLowerCase());
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!normalizedLabels.includes(lines[index].toLowerCase())) continue;
+    for (let offset = 1; offset <= 4 && index + offset < lines.length; offset += 1) {
+      const candidate = lines[index + offset];
+      if (!candidate) continue;
+      const parsed = parser(candidate);
+      if (parsed != null) return { value: parsed, raw: candidate, label: lines[index], method: 'exact-label' };
+      if (SUMMARY_LABEL.test(candidate)) break;
     }
   }
   return null;
 }
 
-function collectMetrics(value, metrics, path = '$', depth = 0) {
-  if (!value || typeof value !== 'object' || depth > 5) return;
-  for (const [key, child] of Object.entries(value)) {
-    const metric = metricFromKey(key);
-    const number = finiteNumber(child);
-    if (metric && number != null && number >= 0) {
-      metrics[metric] = (metrics[metric] || 0) + number;
-    } else if (child && typeof child === 'object') {
-      collectMetrics(child, metrics, `${path}.${key}`, depth + 1);
+function moneyAfterExactLabel(lines, labels) {
+  const normalizedLabels = labels.map(label => label.toLowerCase());
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!normalizedLabels.includes(lines[index].toLowerCase())) continue;
+
+    const nearby = [];
+    for (let offset = 1; offset <= 4 && index + offset < lines.length; offset += 1) {
+      const candidate = lines[index + offset];
+      if (!candidate) continue;
+      if (SUMMARY_LABEL.test(candidate)) break;
+
+      nearby.push(candidate);
+      const combined = nearby.join(' ');
+      const parsed = money(combined);
+      if (parsed != null) {
+        return {
+          value: parsed,
+          raw: combined,
+          label: lines[index],
+          method: nearby.length === 1 ? 'exact-label' : 'adjacent-lines'
+        };
+      }
     }
   }
+  return null;
 }
 
-function modelCandidate(object, path) {
-  const name = modelNameFromObject(object, path);
-  if (!name) return null;
-  const metrics = {};
-  collectMetrics(object, metrics, path);
-  if (!Object.keys(metrics).length) return null;
-  if (metrics.totalTokens == null && (metrics.inputTokens != null || metrics.outputTokens != null)) {
-    metrics.totalTokens = (metrics.inputTokens || 0) + (metrics.outputTokens || 0);
+function inlineMoney(text, labels) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const beforeAmount = new RegExp(`${escaped}[^¥￥\\d]{0,100}(?:¥|￥|CNY|RMB)\\s*([\\d,.]+)`, 'i');
+    const afterAmount = new RegExp(`${escaped}[^\\d]{0,100}([\\d,.]+)\\s*(?:元|CNY|RMB)`, 'i');
+    const match = String(text).match(beforeAmount) || String(text).match(afterAmount);
+    if (match) return { value: Number(match[1].replaceAll(',', '')), raw: match[0], label, method: 'inline-label' };
   }
-  if (metrics.totalTokens == null && metrics.cachedTokens != null) metrics.totalTokens = metrics.cachedTokens;
-  return { name, ...metrics, evidencePath: path };
+  return null;
 }
 
-function walkCandidates(value, candidates, path = '$', depth = 0) {
-  if (value == null || depth > 16) return;
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => walkCandidates(item, candidates, `${path}[${index}]`, depth + 1));
-    return;
-  }
-  if (typeof value !== 'object') return;
-  const candidate = modelCandidate(value, path);
-  if (candidate) candidates.push(candidate);
-  for (const [key, child] of Object.entries(value)) {
-    if (child && typeof child === 'object') walkCandidates(child, candidates, `${path}.${key}`, depth + 1);
-  }
+function summaryMoneyMetric(text, lines, labels) {
+  return moneyAfterExactLabel(lines, labels) || inlineMoney(text, labels) || null;
 }
 
-function aggregateCandidates(candidates) {
-  const byModel = new Map();
-  const seen = new Set();
-  for (const candidate of candidates) {
-    const signature = `${candidate.evidencePath}|${candidate.name}|${candidate.totalTokens ?? ''}|${candidate.inputTokens ?? ''}|${candidate.outputTokens ?? ''}|${candidate.cachedTokens ?? ''}|${candidate.requests ?? ''}|${candidate.afp ?? ''}`;
-    if (seen.has(signature)) continue;
-    seen.add(signature);
-    const key = candidate.name.toLowerCase();
-    const current = byModel.get(key) || {
-      id: key.replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, ''),
-      name: candidate.name,
-      totalTokens: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      cachedTokens: 0,
-      requests: 0,
-      afp: 0,
-      evidencePaths: []
-    };
-    for (const metric of ['totalTokens', 'inputTokens', 'outputTokens', 'cachedTokens', 'requests', 'afp']) {
-      if (candidate[metric] != null) current[metric] += candidate[metric];
-    }
-    current.evidencePaths.push(candidate.evidencePath);
-    byModel.set(key, current);
-  }
-  return [...byModel.values()].map(model => {
-    for (const metric of ['totalTokens', 'inputTokens', 'outputTokens', 'cachedTokens', 'requests', 'afp']) {
-      if (!model[metric]) model[metric] = null;
-    }
-    if (model.totalTokens == null && (model.inputTokens != null || model.outputTokens != null)) {
-      model.totalTokens = (model.inputTokens || 0) + (model.outputTokens || 0);
-    }
-    model.evidencePaths = model.evidencePaths.slice(0, 8);
-    return model;
-  }).sort((a, b) => (b.totalTokens || 0) - (a.totalTokens || 0) || a.name.localeCompare(b.name));
-}
-
-function parseVolcengineModelUsageResponses(responses = []) {
-  const ordered = [...responses]
-    .filter(item => item?.body && typeof item.body === 'object')
-    .sort((a, b) => (b.order || 0) - (a.order || 0));
-  for (const response of ordered) {
-    const candidates = [];
-    walkCandidates(response.body, candidates, response.path || response.url || '$');
-    const models = aggregateCandidates(candidates);
-    if (models.length) {
-      return {
-        models,
-        sourcePath: response.path || response.url || null,
-        capturedAt: response.capturedAt || null,
-        diagnostics: {
-          responseCount: responses.length,
-          candidateCount: candidates.length,
-          selectedOrder: response.order || null,
-          selectedPath: response.path || response.url || null
-        }
-      };
-    }
-  }
+function parseDeepSeekSummaryText(text) {
+  const rawText = String(text ?? '');
+  const lines = rawText.split(/\r?\n/).map(normalizeLine).filter(Boolean);
   return {
-    models: [],
-    sourcePath: null,
-    capturedAt: null,
-    diagnostics: { responseCount: responses.length, candidateCount: 0, selectedOrder: null, selectedPath: null }
+    balance: summaryMoneyMetric(rawText, lines, ['Balance', '账户余额', '可用余额', '充值余额', '余额']),
+    cost: summaryMoneyMetric(rawText, lines, ['Cost', '费用', '消耗']),
+    requests: valueAfterExactLabel(lines, ['API requests', 'API 请求', '请求'], numeric),
+    tokens: valueAfterExactLabel(lines, ['Tokens', 'Token'], numeric),
+    diagnostics: {
+      lineCount: lines.length,
+      matchedLabels: lines.filter(line => SUMMARY_LABEL.test(line)).slice(0, 12)
+    }
   };
 }
 
-window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses;
+  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__ = parseDeepSeekSummaryText;
 })();
+(() => {
+  if (!location.hostname.endsWith('deepseek.com')) return;
+const finite = value => {
+  if (value == null || value === '' || typeof value === 'boolean') return null;
+  const number = Number(String(value).replaceAll(',', '').trim());
+  return Number.isFinite(number) ? number : null;
+};
+
+function unwrap(body, label) {
+  if (!body || typeof body !== 'object') throw new Error(`${label}: missing response`);
+  if (body.code != null && Number(body.code) !== 0) throw new Error(`${label}: code ${body.code}`);
+  const data = body.data;
+  if (!data || typeof data !== 'object') throw new Error(`${label}: missing data`);
+  if (data.biz_code != null && Number(data.biz_code) !== 0) throw new Error(`${label}: biz_code ${data.biz_code}`);
+  return data.biz_data;
+}
+
+function dateLocal(now) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function dateUtc(now) {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+}
+
+function chooseDate(amountDays, costDays, now) {
+  const dates = new Set([
+    ...amountDays.map(day => String(day?.date || '')).filter(Boolean),
+    ...costDays.map(day => String(day?.date || '')).filter(Boolean)
+  ]);
+  for (const candidate of [dateLocal(now), dateUtc(now)]) {
+    if (dates.has(candidate)) return candidate;
+  }
+  return [...dates].sort().at(-1) || dateLocal(now);
+}
+
+function modelKey(name) {
+  const text = String(name || '').toLowerCase();
+  if (text.includes('v4-flash') || /(^|[-_])flash($|[-_])/.test(text)) return 'flash';
+  if (text.includes('v4-pro') || /(^|[-_])pro($|[-_])/.test(text)) return 'pro';
+  return null;
+}
+
+function usageMap(day) {
+  const map = new Map();
+  for (const model of day?.data || []) {
+    const name = String(model?.model || '');
+    if (!name) continue;
+    map.set(name, Array.isArray(model.usage) ? model.usage : []);
+  }
+  return map;
+}
+
+function tokenBreakdown(items) {
+  const result = {
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
+    outputTokens: 0,
+    requests: 0,
+    tokens: 0,
+    hasTokenData: false,
+    hasRequestData: false
+  };
+  for (const item of items || []) {
+    const type = String(item?.type || '').toUpperCase();
+    const amount = finite(item?.amount);
+    if (amount == null || amount < 0) continue;
+    if (type === 'REQUEST') {
+      result.requests += amount;
+      result.hasRequestData = true;
+      continue;
+    }
+    if (type === 'PROMPT_CACHE_HIT_TOKEN') result.cacheHitTokens += amount;
+    else if (type === 'PROMPT_CACHE_MISS_TOKEN') result.cacheMissTokens += amount;
+    else if (type === 'RESPONSE_TOKEN') result.outputTokens += amount;
+    else if (!type.includes('TOKEN')) continue;
+    result.tokens += amount;
+    result.hasTokenData = true;
+  }
+  return result;
+}
+
+function costBreakdown(items) {
+  let cost = 0;
+  let hasCostData = false;
+  for (const item of items || []) {
+    const type = String(item?.type || '').toUpperCase();
+    const amount = finite(item?.amount);
+    if (amount == null || amount < 0 || type === 'REQUEST') continue;
+    cost += amount;
+    hasCostData = true;
+  }
+  return { cost, hasCostData };
+}
+
+function aggregateTokenDays(days) {
+  const result = {
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
+    outputTokens: 0,
+    requests: 0,
+    tokens: 0,
+    hasTokenData: false,
+    hasRequestData: false
+  };
+  for (const day of days || []) {
+    for (const model of day?.data || []) {
+      const current = tokenBreakdown(model?.usage);
+      result.cacheHitTokens += current.cacheHitTokens;
+      result.cacheMissTokens += current.cacheMissTokens;
+      result.outputTokens += current.outputTokens;
+      result.requests += current.requests;
+      result.tokens += current.tokens;
+      result.hasTokenData ||= current.hasTokenData;
+      result.hasRequestData ||= current.hasRequestData;
+    }
+  }
+  return result;
+}
+
+function aggregateCostDays(days) {
+  let cost = 0;
+  let hasCostData = false;
+  for (const day of days || []) {
+    for (const model of day?.data || []) {
+      const current = costBreakdown(model?.usage);
+      cost += current.cost;
+      hasCostData ||= current.hasCostData;
+    }
+  }
+  return { cost, hasCostData };
+}
+
+function parseBalance(summaryBody) {
+  const summary = unwrap(summaryBody, 'summary');
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) throw new Error('summary: malformed biz_data');
+  const normal = Array.isArray(summary.normal_wallets) ? summary.normal_wallets : [];
+  const bonus = Array.isArray(summary.bonus_wallets) ? summary.bonus_wallets : [];
+  const currencies = new Set([...normal, ...bonus].map(wallet => wallet?.currency).filter(Boolean));
+  const currency = currencies.has('CNY') ? 'CNY' : [...currencies][0] || 'CNY';
+  const toppedUp = normal.filter(wallet => wallet?.currency === currency).reduce((sum, wallet) => sum + (finite(wallet.balance) || 0), 0);
+  const granted = bonus.filter(wallet => wallet?.currency === currency).reduce((sum, wallet) => sum + (finite(wallet.balance) || 0), 0);
+  return {
+    value: toppedUp + granted,
+    currency,
+    toppedUp,
+    granted,
+    monthlyCost: finite(summary.monthly_costs?.[0]?.amount),
+    cumulativeCost: finite(summary.total_costs?.[0]?.amount),
+    monthlyTokens: finite(summary.monthly_token_usage),
+    monthlyRequests: finite(summary.total_usage)
+  };
+}
+
+function parseDeepSeekPlatformPayloads({ summaryBody, amountBody, costBody, now = new Date() }) {
+  const amountBiz = unwrap(amountBody, 'amount');
+  if (!amountBiz || typeof amountBiz !== 'object' || Array.isArray(amountBiz)) throw new Error('amount: malformed biz_data');
+  const costBiz = unwrap(costBody, 'cost');
+  if (!Array.isArray(costBiz)) throw new Error('cost: malformed biz_data');
+
+  const amountDays = Array.isArray(amountBiz.days) ? amountBiz.days : [];
+  const selectedCostBucket = costBiz.find(item => item?.currency === 'CNY') || costBiz[0] || {};
+  const costDays = Array.isArray(selectedCostBucket.days) ? selectedCostBucket.days : [];
+  const date = chooseDate(amountDays, costDays, now);
+  const amountModels = usageMap(amountDays.find(day => day?.date === date));
+  const costModels = usageMap(costDays.find(day => day?.date === date));
+  const allModelNames = new Set([...amountModels.keys(), ...costModels.keys()]);
+
+  const models = {
+    flash: { name: 'deepseek-v4-flash', date, tokens: null, cost: null, cacheHitTokens: null, cacheMissTokens: null, outputTokens: null, cacheRate: null, requests: null },
+    pro: { name: 'deepseek-v4-pro', date, tokens: null, cost: null, cacheHitTokens: null, cacheMissTokens: null, outputTokens: null, cacheRate: null, requests: null }
+  };
+
+  let todayTokens = 0;
+  let todayCost = 0;
+  let todayRequests = 0;
+  let totalHit = 0;
+  let totalMiss = 0;
+  let hasTokens = false;
+  let hasCost = false;
+  let hasRequests = false;
+
+  for (const name of allModelNames) {
+    const token = tokenBreakdown(amountModels.get(name));
+    const cost = costBreakdown(costModels.get(name));
+    if (token.hasTokenData) { todayTokens += token.tokens; hasTokens = true; }
+    if (token.hasRequestData) { todayRequests += token.requests; hasRequests = true; }
+    if (cost.hasCostData) { todayCost += cost.cost; hasCost = true; }
+    totalHit += token.cacheHitTokens;
+    totalMiss += token.cacheMissTokens;
+
+    const key = modelKey(name);
+    if (!key) continue;
+    models[key] = {
+      name,
+      date,
+      tokens: token.hasTokenData ? token.tokens : null,
+      cost: cost.hasCostData ? cost.cost : null,
+      cacheHitTokens: token.hasTokenData ? token.cacheHitTokens : null,
+      cacheMissTokens: token.hasTokenData ? token.cacheMissTokens : null,
+      outputTokens: token.hasTokenData ? token.outputTokens : null,
+      cacheRate: token.cacheHitTokens + token.cacheMissTokens > 0
+        ? token.cacheHitTokens / (token.cacheHitTokens + token.cacheMissTokens) * 100
+        : null,
+      requests: token.hasRequestData ? token.requests : null
+    };
+  }
+
+  const balance = parseBalance(summaryBody);
+  const monthlyTokenTotals = aggregateTokenDays(amountDays);
+  const monthlyCostTotals = aggregateCostDays(costDays);
+  const monthlyCost = monthlyCostTotals.hasCostData ? monthlyCostTotals.cost : balance.monthlyCost;
+  const monthlyTokens = monthlyTokenTotals.hasTokenData ? monthlyTokenTotals.tokens : balance.monthlyTokens;
+  const monthlyRequests = monthlyTokenTotals.hasRequestData ? monthlyTokenTotals.requests : balance.monthlyRequests;
+
+  return {
+    date,
+    balance: { value: balance.value, currency: balance.currency, toppedUp: balance.toppedUp, granted: balance.granted },
+    todayTokens: hasTokens ? todayTokens : null,
+    todayCost: hasCost ? todayCost : null,
+    todayRequests: hasRequests ? todayRequests : null,
+    cacheRate: totalHit + totalMiss > 0 ? totalHit / (totalHit + totalMiss) * 100 : null,
+    models,
+    account: {
+      monthlyCost,
+      cumulativeCost: balance.cumulativeCost,
+      monthlyTokens,
+      monthlyRequests
+    },
+    diagnostics: {
+      source: 'platform-internal-api',
+      selectedDate: date,
+      amountDayCount: amountDays.length,
+      costDayCount: costDays.length,
+      modelNames: [...allModelNames],
+      monthlyAggregation: {
+        cost: monthlyCostTotals.hasCostData ? 'summed-days' : balance.monthlyCost != null ? 'summary' : 'missing',
+        tokens: monthlyTokenTotals.hasTokenData ? 'summed-days' : balance.monthlyTokens != null ? 'summary' : 'missing',
+        requests: monthlyTokenTotals.hasRequestData ? 'summed-days' : balance.monthlyRequests != null ? 'summary' : 'missing'
+      }
+    }
+  };
+}
+
+  window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__ = parseDeepSeekPlatformPayloads;
+})();
+(() => {
+  if (!location.hostname.endsWith('volcengine.com')) return;
+  window.__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true;
+const DATE_RE = /20\d{2}[-/]\d{1,2}[-/]\d{1,2}/;
+const GENERIC_SERIES = /^(tokens?|total|value|series\s*\d+|全部模型|模型|model)$/i;
+
+const finite = value => {
+  if (value == null || value === '' || typeof value === 'boolean') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) {
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+      const parsed = finite(value[index]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+  if (typeof value === 'object') {
+    for (const key of ['value', 'y', 'amount', 'count', 'tokens', 'tokenCount']) {
+      const parsed = finite(value[key]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+  const text = String(value).replaceAll(',', '').trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(text)) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const cleanName = value => String(value ?? '').trim();
+const modelId = name => cleanName(name).toLowerCase()
+  .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
+  .replace(/^-|-$/g, '');
+
+const dateText = value => cleanName(value).match(DATE_RE)?.[0]?.replaceAll('/', '-') || null;
+
+function flattenLegendData(option = {}) {
+  const entries = Array.isArray(option.legend) ? option.legend : option.legend ? [option.legend] : [];
+  return entries.flatMap(legend => Array.isArray(legend?.data) ? legend.data : [])
+    .map(item => cleanName(typeof item === 'object' ? item.name : item))
+    .filter(Boolean);
+}
+
+function normalizeLegendNames(option, supplied = []) {
+  const names = [...supplied, ...flattenLegendData(option)].map(cleanName).filter(Boolean);
+  return [...new Map(names.map(name => [name.toLowerCase(), name])).values()];
+}
+
+function xAxisValues(option = {}) {
+  const axes = Array.isArray(option.xAxis) ? option.xAxis : option.xAxis ? [option.xAxis] : [];
+  for (const axis of axes) {
+    if (Array.isArray(axis?.data) && axis.data.length) return axis.data.map(item => cleanName(typeof item === 'object' ? item.value : item));
+  }
+  return [];
+}
+
+function pointValues(data = []) {
+  return data.map(finite).filter(value => value != null && value >= 0);
+}
+
+function modelNameForSeries(series, index, legendNames) {
+  const explicit = cleanName(series?.name);
+  if (explicit && !GENERIC_SERIES.test(explicit)) return explicit;
+  return legendNames[index] || explicit || null;
+}
+
+function seriesModels(option, legendNames) {
+  const series = Array.isArray(option?.series) ? option.series : [];
+  const models = [];
+  const legendSet = new Set(legendNames.map(name => name.toLowerCase()));
+  series.forEach((entry, index) => {
+    const name = modelNameForSeries(entry, index, legendNames);
+    if (!name) return;
+    if (legendSet.size && !legendSet.has(name.toLowerCase())) return;
+    const values = pointValues(Array.isArray(entry?.data) ? entry.data : []);
+    if (!values.length && !legendNames.some(item => item.toLowerCase() === name.toLowerCase())) return;
+    models.push({
+      id: modelId(name),
+      name,
+      totalTokens: values.reduce((sum, value) => sum + value, 0),
+      latestTokens: values.length ? values.at(-1) : 0,
+      peakTokens: values.length ? Math.max(...values) : 0,
+      pointCount: values.length
+    });
+  });
+  return models;
+}
+
+function datasetSources(option = {}) {
+  const datasets = Array.isArray(option.dataset) ? option.dataset : option.dataset ? [option.dataset] : [];
+  return datasets.map(dataset => dataset?.source).filter(Array.isArray);
+}
+
+function modelsFromArrayRows(source, legendNames) {
+  if (!Array.isArray(source) || !Array.isArray(source[0])) return [];
+  const header = source[0].map(cleanName);
+  const rows = source.slice(1);
+  const names = legendNames.length ? legendNames : header.slice(1).filter(name => name && !/date|time|day|日期|时间/i.test(name));
+  return names.map(name => {
+    const column = header.findIndex(item => item.toLowerCase() === name.toLowerCase());
+    if (column < 0) return null;
+    const values = rows.map(row => finite(row?.[column])).filter(value => value != null && value >= 0);
+    return {
+      id: modelId(name),
+      name,
+      totalTokens: values.reduce((sum, value) => sum + value, 0),
+      latestTokens: values.length ? values.at(-1) : 0,
+      peakTokens: values.length ? Math.max(...values) : 0,
+      pointCount: values.length
+    };
+  }).filter(Boolean);
+}
+
+function modelsFromObjectRows(source, legendNames) {
+  if (!Array.isArray(source) || !source.length || !source.every(row => row && typeof row === 'object' && !Array.isArray(row))) return [];
+  const keys = [...new Set(source.flatMap(row => Object.keys(row)))];
+  const names = legendNames.length ? legendNames : keys.filter(key => !/date|time|day|日期|时间/i.test(key));
+  return names.map(name => {
+    const key = keys.find(item => item.toLowerCase() === name.toLowerCase());
+    if (!key) return null;
+    const values = source.map(row => finite(row[key])).filter(value => value != null && value >= 0);
+    return {
+      id: modelId(name),
+      name,
+      totalTokens: values.reduce((sum, value) => sum + value, 0),
+      latestTokens: values.length ? values.at(-1) : 0,
+      peakTokens: values.length ? Math.max(...values) : 0,
+      pointCount: values.length
+    };
+  }).filter(Boolean);
+}
+
+function datasetModels(option, legendNames) {
+  for (const source of datasetSources(option)) {
+    const models = modelsFromArrayRows(source, legendNames);
+    if (models.length) return models;
+    const objectModels = modelsFromObjectRows(source, legendNames);
+    if (objectModels.length) return objectModels;
+  }
+  return [];
+}
+
+function mergeModels(models, legendNames) {
+  const byName = new Map();
+  for (const model of models) {
+    const key = model.name.toLowerCase();
+    const current = byName.get(key);
+    if (!current || model.pointCount > current.pointCount) byName.set(key, model);
+  }
+  for (const name of legendNames) {
+    const key = name.toLowerCase();
+    if (!byName.has(key)) byName.set(key, { id: modelId(name), name, totalTokens: 0, latestTokens: 0, peakTokens: 0, pointCount: 0 });
+  }
+  return [...byName.values()].sort((a, b) => (b.totalTokens || 0) - (a.totalTokens || 0) || a.name.localeCompare(b.name));
+}
+
+function parseVolcengineEchartsOption(option = {}, suppliedLegendNames = [], metadata = {}) {
+  const legendNames = normalizeLegendNames(option, suppliedLegendNames);
+  const direct = seriesModels(option, legendNames);
+  const directHasPoints = direct.some(model => model.pointCount > 0);
+  const fromDataset = directHasPoints ? [] : datasetModels(option, legendNames);
+  const models = mergeModels(directHasPoints ? direct : fromDataset, legendNames);
+  const axis = xAxisValues(option);
+  const dates = axis.map(dateText).filter(Boolean);
+  const periodStart = metadata.periodStart || dates[0] || null;
+  const periodEnd = metadata.periodEnd || dates.at(-1) || null;
+  return {
+    models,
+    periodStart,
+    periodEnd,
+    granularity: metadata.granularity || null,
+    diagnostics: {
+      seriesCount: Array.isArray(option?.series) ? option.series.length : 0,
+      datasetCount: datasetSources(option).length,
+      legendNames,
+      xAxisCount: axis.length,
+      pointCount: models.reduce((sum, model) => sum + model.pointCount, 0),
+      extractionMode: directHasPoints ? 'series' : fromDataset.length ? 'dataset' : legendNames.length ? 'legend-only' : 'none'
+    }
+  };
+}
+
+  window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__ = parseVolcengineEchartsOption;
+const hasChartData = option => Boolean(option && (Array.isArray(option.series) || option.dataset));
+
+function inspectReactEchartsFiber(rootFiber) {
+  const seen = new Set();
+  for (let fiber = rootFiber, depth = 0; fiber && depth < 40; depth += 1, fiber = fiber.return) {
+    for (const candidate of [fiber, fiber.alternate]) {
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      const stateNode = candidate.stateNode;
+      try {
+        if (stateNode && typeof stateNode.getEchartsInstance === 'function') {
+          const instance = stateNode.getEchartsInstance();
+          const option = instance?.getOption?.();
+          if (hasChartData(option)) return { option, method: 'react-component' };
+        }
+        if (stateNode?.echarts && typeof stateNode.echarts.getOption === 'function') {
+          const option = stateNode.echarts.getOption();
+          if (hasChartData(option)) return { option, method: 'react-state-node' };
+        }
+      } catch {
+        // The chart class can exist before its ECharts instance finishes mounting.
+      }
+      for (const props of [candidate.memoizedProps, candidate.pendingProps, stateNode?.props]) {
+        const option = props?.option;
+        if (hasChartData(option)) return { option, method: 'react-props' };
+      }
+    }
+  }
+  return null;
+}
+
+function readEchartsOptionFromElement(chart, echartsGlobal = null) {
+  if (!chart) return null;
+  try {
+    const instance = echartsGlobal?.getInstanceByDom?.(chart);
+    const option = instance?.getOption?.();
+    if (hasChartData(option)) return { option, method: 'echarts-global' };
+  } catch {
+    // Ark bundles ECharts as a module, so a window-level instance is optional.
+  }
+
+  for (let node = chart, depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+    for (const key of Object.getOwnPropertyNames(node)) {
+      if (!/^__react(?:Fiber|InternalInstance|Container)\$.+/.test(key)) continue;
+      const found = inspectReactEchartsFiber(node[key]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+  window.__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__ = readEchartsOptionFromElement;
+})();
+/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR START */
 (() => {
   'use strict';
   if (window.__TOKEN_ON_KINDLE_INSTALLED__) return;
@@ -498,19 +1017,14 @@ window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses
     }
   }
 
-  window.addEventListener('beforeunload', () => {
-    if (!document.hasFocus()) {
-      try { window.close(); } catch { /* native window guard */ }
-    }
-  });
-
   function signal(payload) {
-    const bytes = new TextEncoder().encode(JSON.stringify({ ...payload, updateIntervalMinutes: syncState.refreshMinutes, syncRequestedAt: syncState.syncRequestedAt }));
+    const bytes = new TextEncoder().encode(JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.(source, { ...payload, updateIntervalMinutes: syncState.refreshMinutes, syncRequestedAt: syncState.syncRequestedAt }) || payload));
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
     const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
     const pageTitle = document.title;
     document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;
+    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);
     setTimeout(() => {
       document.title = pageTitle || (source === 'codex' ? 'Codex Analytics' : source === 'deepseek' ? 'DeepSeek Platform' : '火山方舟 Agent Plan 企业版');
     }, 250);
@@ -666,8 +1180,7 @@ window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses
       };
     }
   }
-
-  installVolcengineNetworkCapture();
+  // Volcengine reads rendered ReactECharts state; request interception stays disabled.
 
   function resetText(text) {
     const match = text.match(/(?:reset(?:s| at)?|next reset|renew(?:s|al)?|重置|恢复|下次重置)[：:\s]*([^\n|]{1,80})/i);
@@ -1121,7 +1634,10 @@ window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses
     const hide = document.createElement('button');
     hide.textContent = '隐藏窗口';
     hide.style.cssText = 'padding:7px 9px;border:1px solid #777;background:#fff;color:#111;border-radius:6px';
-    hide.onclick = () => window.close();
+    hide.onclick = () => {
+    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';
+    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');
+  };
     const note = document.createElement('span');
     note.id = '__token_on_kindle_status';
     note.style.cssText = 'grid-column:1/-1;max-width:290px;color:#555;font-size:11px;line-height:1.35';
@@ -1138,7 +1654,7 @@ window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses
       await originalCollectAndSignal(options);
       if (source === 'volcengine' && !volcengineUsageReady()) return;
       sessionStorage.setItem('__token_on_kindle_synced_view', location.href);
-      setToolbarStatus(options.manual ? '已同步至 Kindle' : '后台同步完成', 'success');
+      setToolbarStatus(options.manual ? '已发送至主程序，主界面收到后会更新' : '后台数据已发送', 'success');
     } catch (error) {
       setToolbarStatus('同步失败：' + String(error?.message || error).slice(0, 80), 'error');
       console.error('[Token on Kindle] collection failed', error);
@@ -1146,28 +1662,565 @@ window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE__ = parseVolcengineModelUsageResponses
   };
   window.__TOKEN_ON_KINDLE_SYNC__ = collectAndSignal;
 
-  let autoCapturedView = '';
-  const observer = new MutationObserver(() => {
-    toolbar();
-    if (source !== 'volcengine' || !volcengineUsageReady()) return;
-    const marker = location.href;
-    if (marker === autoCapturedView) return;
-    autoCapturedView = marker;
-    setToolbarStatus('已识别企业版 AFP 用量视图，可点击同步');
-    setTimeout(() => collectAndSignal({ automatic: true }), 900);
-  });
-
   function start() {
     toolbar();
-    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-    if (source !== 'volcengine') {
+    if (source === 'codex') {
       setTimeout(() => collectAndSignal({ automatic: true }), 2500);
       setTimeout(() => collectAndSignal({ automatic: true }), 7000);
-    } else if (volcengineUsageReady()) {
-      setTimeout(() => collectAndSignal({ automatic: true }), 1200);
+    } else if (source === 'deepseek') {
+      setToolbarStatus('等待 DeepSeek Platform 直读器同步余额与模型明细');
+    } else {
+      setToolbarStatus('等待企业版用量页面；轻量图表读取器将在页面就绪后同步');
     }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 })();
+/* TOKEN-ON-KINDLE CANONICAL EXTRACTOR END */
+(() => {
+  'use strict';
+  if (!location.hostname.endsWith('deepseek.com') || window.__TOKEN_ON_KINDLE_DEEPSEEK_DIRECT_READER__) return;
+  window.__TOKEN_ON_KINDLE_DEEPSEEK_DIRECT_READER__ = true;
+
+  const legacySync = window.__TOKEN_ON_KINDLE_SYNC__;
+  const finite = value => {
+    if (value == null || value === '' || typeof value === 'boolean') return null;
+    const parsed = Number(String(value).replaceAll(',', '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const state = { collecting: false, lastSummary: {}, lastPayload: null, retryTimer: null };
+
+  function applySyncOptions(options = {}) {
+    const refreshMinutes = finite(options.refreshMinutes ?? options.refresh_minutes);
+    if (refreshMinutes != null) sessionStorage.setItem('__token_on_kindle_refresh_minutes', String(refreshMinutes));
+    if (options.syncRequestedAt) sessionStorage.setItem('__token_on_kindle_sync_requested_at', String(options.syncRequestedAt));
+  }
+
+  function encodeSignal(payload) {
+    const refreshMinutes = finite(sessionStorage.getItem('__token_on_kindle_refresh_minutes'));
+    const syncRequestedAt = sessionStorage.getItem('__token_on_kindle_sync_requested_at') || null;
+    const bytes = new TextEncoder().encode(JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.('deepseek', { ...payload, updateIntervalMinutes: refreshMinutes, syncRequestedAt }) || payload));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  }
+
+  function signal(payload) {
+    const title = document.title;
+    const encoded = encodeSignal(payload);
+    document.title = `__TOKEN_ON_KINDLE__:deepseek:${encoded}`;
+    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'deepseek', encoded);
+    setTimeout(() => { document.title = title || 'DeepSeek Platform'; }, 250);
+  }
+
+  function status(message, stateName = '') {
+    const note = document.querySelector('#__token_on_kindle_status');
+    if (!note) return;
+    note.textContent = message;
+    note.dataset.state = stateName;
+  }
+
+  function platformToken() {
+    const raw = localStorage.getItem('userToken');
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'string' ? parsed : parsed?.value || parsed?.token || null;
+    } catch {
+      return raw;
+    }
+  }
+
+  async function platformJson(path, token) {
+    const response = await fetch(path, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function visibleSummary(attempts = 3) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const parsed = window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_SUMMARY__?.(document.body?.innerText || '') || {};
+      if (parsed.balance || parsed.cost || parsed.tokens || parsed.requests) {
+        state.lastSummary = { ...state.lastSummary, ...parsed };
+        return state.lastSummary;
+      }
+      if (attempt + 1 < attempts) await sleep(250);
+    }
+    return state.lastSummary;
+  }
+
+  async function fetchPlatformUsage() {
+    const token = platformToken();
+    if (!token) throw new Error('DeepSeek Platform 登录令牌不存在');
+    const now = new Date();
+    const periods = [
+      { month: now.getMonth() + 1, year: now.getFullYear() },
+      { month: now.getUTCMonth() + 1, year: now.getUTCFullYear() }
+    ].filter((item, index, all) => all.findIndex(other => other.month === item.month && other.year === item.year) === index);
+    const summaryBody = await platformJson('/api/v0/users/get_user_summary', token);
+    const attempts = [];
+    for (const period of periods) {
+      try {
+        const query = `month=${period.month}&year=${period.year}`;
+        const [amountBody, costBody] = await Promise.all([
+          platformJson(`/api/v0/usage/amount?${query}`, token),
+          platformJson(`/api/v0/usage/cost?${query}`, token)
+        ]);
+        attempts.push(window.__TOKEN_ON_KINDLE_PARSE_DEEPSEEK_PLATFORM__({ summaryBody, amountBody, costBody, now }));
+      } catch (error) {
+        attempts.push({ error: String(error?.message || error), date: null });
+      }
+    }
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const utcDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    const parsed = attempts.find(item => item?.date === localDate)
+      || attempts.find(item => item?.date === utcDate)
+      || attempts.filter(item => !item?.error).sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    if (!parsed) throw new Error(attempts.map(item => item.error).filter(Boolean).join(' | ') || 'DeepSeek 用量响应为空');
+    parsed.diagnostics = {
+      ...parsed.diagnostics,
+      attempts: attempts.map(item => item?.error ? { error: item.error } : { date: item?.date || null })
+    };
+    return parsed;
+  }
+
+  function payloadFrom(parsed, summary) {
+    const balance = parsed.balance || (summary.balance ? { value: summary.balance.value, currency: 'CNY' } : null);
+    return {
+      source: 'deepseek',
+      capturedAt: new Date().toISOString(),
+      url: location.href,
+      balance,
+      date: parsed.date || null,
+      todayCost: parsed.todayCost == null ? null : { value: parsed.todayCost, currency: balance?.currency || 'CNY' },
+      todayTokens: parsed.todayTokens == null ? null : { value: parsed.todayTokens },
+      todayRequests: parsed.todayRequests == null ? null : { value: parsed.todayRequests },
+      cacheRate: parsed.cacheRate == null ? null : { value: parsed.cacheRate },
+      models: parsed.models || { flash: null, pro: null },
+      account: parsed.account || null,
+      range: {
+        cost: summary.cost?.value ?? null,
+        tokens: summary.tokens?.value ?? null,
+        requests: summary.requests?.value ?? null
+      },
+      diagnostics: {
+        primarySource: 'platform-internal-api',
+        parser: parsed.diagnostics || null,
+        visibleSummary: summary.diagnostics || null
+      }
+    };
+  }
+
+  async function directSync(options = {}) {
+    if (state.collecting) return state.lastPayload;
+    state.collecting = true;
+    applySyncOptions(options);
+    status('正在读取 DeepSeek Platform…');
+    try {
+      const [summary, parsed] = await Promise.all([visibleSummary(options.manual ? 4 : 2), fetchPlatformUsage()]);
+      const payload = payloadFrom(parsed, summary);
+      state.lastPayload = payload;
+      signal(payload);
+      status('已发送余额、Flash/Pro Token 与缓存明细', 'success');
+      return payload;
+    } catch (error) {
+      const message = String(error?.message || error);
+      status(`直读失败，使用页面回退：${message.slice(0, 54)}`, 'warning');
+      if (typeof legacySync === 'function') {
+        await legacySync(options);
+        return state.lastPayload;
+      }
+      throw error;
+    } finally {
+      state.collecting = false;
+    }
+  }
+
+  function installOverride() {
+    window.__TOKEN_ON_KINDLE_SYNC__ = directSync;
+    const button = [...document.querySelectorAll('#__token_on_kindle_toolbar button')]
+      .find(element => String(element.textContent || '').trim() === '同步至 Kindle');
+    if (button && button.dataset.deepseekDirect !== 'true') {
+      button.dataset.deepseekDirect = 'true';
+      button.onclick = () => directSync({ manual: true });
+    }
+  }
+
+  function schedule(options, delay) {
+    if (state.retryTimer) clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = null;
+      installOverride();
+      directSync(options).catch(() => {});
+    }, delay);
+  }
+
+  function start() {
+    installOverride();
+    setTimeout(() => { installOverride(); directSync({ automatic: true, startup: true }).catch(() => {}); }, 1800);
+    setTimeout(() => { installOverride(); if (!state.lastPayload) directSync({ automatic: true, startup: true }).catch(() => {}); }, 5200);
+  }
+
+  window.addEventListener('pageshow', () => schedule({ automatic: true, pageshow: true }, 500));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') schedule({ automatic: true, visible: true }, 500);
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+})();
+
+(() => {
+  'use strict';
+  if (!location.hostname.endsWith('volcengine.com') || window.__TOKEN_ON_KINDLE_VOLCENGINE_CHART_READER__) return;
+  window.__TOKEN_ON_KINDLE_VOLCENGINE_CHART_READER__ = true;
+
+  const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
+  const numeric = value => {
+    const match = String(value ?? '').replaceAll(',', '').match(/-?\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : null;
+  };
+  const scaledNumber = value => {
+    const text = String(value ?? '').replaceAll(',', '').trim();
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return null;
+    let parsed = Number(match[0]);
+    if (!Number.isFinite(parsed)) return null;
+    if (/亿/.test(text)) parsed *= 100_000_000;
+    else if (/万/.test(text)) parsed *= 10_000;
+    return parsed;
+  };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  const state = {
+    section: null,
+    chart: null,
+    cards: new Map(),
+    lastGoodChart: null,
+    collecting: false,
+    retryTimer: null,
+    lastHref: location.href
+  };
+
+  function exactVisibleElement(label, root = document) {
+    return [...root.querySelectorAll('h1,h2,h3,h4,strong,label,span,p,div')]
+      .find(element => clean(element.textContent) === label) || null;
+  }
+
+  function sectionRoot() {
+    if (state.section?.isConnected && clean(state.section.textContent).includes('模型调用明细')) {
+      return state.section;
+    }
+    const title = exactVisibleElement('模型调用明细');
+    if (!title) return null;
+    let node = title;
+    let best = title.parentElement;
+    for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+      const text = clean(node.innerText || node.textContent || '');
+      if (!text.includes('模型调用明细') || text.length > 30_000) continue;
+      best = node;
+      if (node.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]')) break;
+    }
+    state.section = best;
+    return best;
+  }
+
+  function legendNames(root) {
+    if (!root) return [];
+    const names = [...root.querySelectorAll('[class*="legendItem"][title], [class*="legendBox"] [title]')]
+      .map(element => clean(element.getAttribute('title'))).filter(Boolean);
+    if (!names.length) {
+      names.push(...[...root.querySelectorAll('[class*="legendName"]')]
+        .map(element => clean(element.textContent)).filter(Boolean));
+    }
+    return [...new Map(names.map(name => [name.toLowerCase(), name])).values()];
+  }
+
+  function chartElement(root) {
+    if (state.chart?.isConnected && root?.contains(state.chart)) return state.chart;
+    state.chart = root?.querySelector('.echarts-for-react[_echarts_instance_], [_echarts_instance_]') || null;
+    return state.chart;
+  }
+
+  function chartOption(chart) {
+    return window.__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__?.(chart, window.echarts) || null;
+  }
+
+  function cachedChartFallback(diagnostics, dates, granularity) {
+    if (!state.lastGoodChart) {
+      return {
+        models: [],
+        periodStart: dates[0] || null,
+        periodEnd: dates[1] || null,
+        granularity: granularity || null,
+        source: 'none',
+        diagnostics
+      };
+    }
+    return {
+      ...state.lastGoodChart,
+      source: `${state.lastGoodChart.source}-cached`,
+      diagnostics: {
+        ...diagnostics,
+        cached: true,
+        cachedFrom: state.lastGoodChart.source,
+        parser: state.lastGoodChart.diagnostics?.parser || null
+      }
+    };
+  }
+
+  function readModelChart() {
+    const root = sectionRoot();
+    const chart = chartElement(root);
+    const names = legendNames(root);
+    const dates = root ? [...root.querySelectorAll('input[placeholder="开始日期"], input[placeholder="结束日期"]')]
+      .map(input => clean(input.value)).filter(Boolean) : [];
+    const granularity = root ? [...root.querySelectorAll('[class*="granularityTabActive"]')]
+      .map(element => clean(element.textContent)).find(value => value === '天' || value === '小时') : null;
+    const diagnostics = {
+      chartCount: chart ? 1 : 0,
+      legendNames: names,
+      periodStart: dates[0] || null,
+      periodEnd: dates[1] || null,
+      granularity: granularity || null,
+      accessMethod: null,
+      chartInstanceId: chart?.getAttribute('_echarts_instance_') || null,
+      parser: null,
+      cached: false
+    };
+
+    if (!chart) return cachedChartFallback(diagnostics, dates, granularity);
+    const access = chartOption(chart);
+    if (!access?.option) return cachedChartFallback(diagnostics, dates, granularity);
+    const parsed = window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__?.(
+      access.option,
+      names,
+      { periodStart: dates[0] || null, periodEnd: dates[1] || null, granularity: granularity || null }
+    );
+    diagnostics.accessMethod = access.method;
+    diagnostics.parser = parsed?.diagnostics || null;
+    if (!parsed?.diagnostics?.pointCount || !parsed.models?.length) {
+      return cachedChartFallback(diagnostics, dates, granularity);
+    }
+
+    const result = {
+      models: parsed.models,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      granularity: parsed.granularity,
+      source: access.method,
+      diagnostics
+    };
+    state.lastGoodChart = result;
+    return result;
+  }
+
+  const WINDOWS = [
+    { id: '5h', label: '近5小时用量' },
+    { id: 'weekly', label: '近一周用量' },
+    { id: 'monthly', label: '近一月用量' }
+  ];
+
+  function usageCard(label) {
+    const cached = state.cards.get(label);
+    if (cached?.isConnected && clean(cached.textContent).includes(label)) return cached;
+    const labelElement = exactVisibleElement(label);
+    if (!labelElement) return null;
+    let node = labelElement;
+    let best = null;
+    for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+      const text = clean(node.innerText || node.textContent || '');
+      if (!text.includes(label) || text.length > 2200) continue;
+      best = node;
+      if (node.querySelector('[aria-valuenow], [role="progressbar"], [title]')) break;
+    }
+    if (best) state.cards.set(label, best);
+    return best;
+  }
+
+  function resetText(text) {
+    const line = String(text || '').split(/\n+/).map(clean)
+      .find(value => /(?:后重置|后刷新|重置于|下次重置)/.test(value));
+    return line ? line.slice(0, 80) : null;
+  }
+
+  function collectWindow(definition) {
+    const card = usageCard(definition.label);
+    if (!card) return null;
+    const text = card.innerText || card.textContent || '';
+    const progress = card.querySelector('[aria-valuenow]');
+    let usedPercent = numeric(progress?.getAttribute('aria-valuenow'));
+    const ratio = text.match(/([\d,.]+(?:\.\d+)?\s*(?:万|亿)?)\s*(?:AFP)?\s*[/／]\s*([\d,.]+(?:\.\d+)?\s*(?:万|亿)?)/i);
+    let used = ratio ? scaledNumber(ratio[1]) : null;
+    let total = ratio ? scaledNumber(ratio[2]) : null;
+    if (total == null) {
+      const titled = [...card.querySelectorAll('[title]')]
+        .map(element => scaledNumber(element.getAttribute('title')))
+        .filter(value => value != null && value > 0);
+      if (titled.length) total = Math.max(...titled);
+    }
+    if (usedPercent == null) {
+      const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+      usedPercent = match ? Number(match[1]) : null;
+    }
+    if (used == null && total != null && usedPercent != null) used = total * usedPercent / 100;
+    if (usedPercent == null && used != null && total) usedPercent = used / total * 100;
+    return {
+      id: definition.id,
+      label: definition.label,
+      used,
+      total,
+      usedPercent,
+      remainingPercent: usedPercent == null ? null : Math.max(0, 100 - usedPercent),
+      resetText: resetText(text)
+    };
+  }
+
+  function applySyncOptions(options = {}) {
+    const refreshMinutes = numeric(options.refreshMinutes ?? options.refresh_minutes);
+    if (refreshMinutes != null) sessionStorage.setItem('__token_on_kindle_refresh_minutes', String(refreshMinutes));
+    if (options.syncRequestedAt) sessionStorage.setItem('__token_on_kindle_sync_requested_at', String(options.syncRequestedAt));
+  }
+
+  function encodeSignal(payload) {
+    const refreshMinutes = numeric(sessionStorage.getItem('__token_on_kindle_refresh_minutes'));
+    const syncRequestedAt = sessionStorage.getItem('__token_on_kindle_sync_requested_at') || null;
+    const bytes = new TextEncoder().encode(JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.('volcengine', { ...payload, updateIntervalMinutes: refreshMinutes, syncRequestedAt }) || payload));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  }
+
+  function signal(payload) {
+    const title = document.title;
+    const encoded = encodeSignal(payload);
+    document.title = `__TOKEN_ON_KINDLE__:volcengine:${encoded}`;
+    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'volcengine', encoded);
+    setTimeout(() => { document.title = title || '火山方舟 Agent Plan 企业版'; }, 250);
+  }
+
+  function toolbarStatus(message, stateName = '') {
+    const note = document.querySelector('#__token_on_kindle_status');
+    if (!note) return;
+    note.textContent = message;
+    note.dataset.state = stateName;
+  }
+
+  function scheduleRetry(options, delay = 1200) {
+    if (state.retryTimer) clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = null;
+      collectAndSignal({ ...options, retry: true }).catch(() => {});
+    }, delay);
+  }
+
+  async function collectAndSignal(options = {}) {
+    if (state.collecting) return null;
+    state.collecting = true;
+    applySyncOptions(options);
+    try {
+      await sleep(40);
+      const windows = WINDOWS.map(collectWindow).filter(Boolean);
+      if (windows.length !== WINDOWS.length) {
+        toolbarStatus('等待企业版 AFP 用量页面就绪', 'warning');
+        if (!options.retry && (options.manual || options.automatic)) scheduleRetry(options, 1400);
+        return null;
+      }
+      const chart = readModelChart();
+      const payload = {
+        source: 'volcengine',
+        capturedAt: new Date().toISOString(),
+        plan: 'Agent Plan 企业版',
+        unit: 'AFP',
+        windows,
+        models: chart.models,
+        modelUsage: {
+          source: chart.source,
+          periodStart: chart.periodStart,
+          periodEnd: chart.periodEnd,
+          granularity: chart.granularity
+        },
+        url: location.href,
+        diagnostics: {
+          primarySource: 'enterprise-usage-view',
+          quotaCount: windows.length,
+          usageViewReady: true,
+          modelUsageSource: chart.source,
+          modelCount: chart.models.length,
+          modelChart: chart.diagnostics
+        }
+      };
+      signal(payload);
+      toolbarStatus(
+        chart.models.length ? `已发送 AFP 与 ${chart.models.length} 个模型` : '已发送 AFP；模型图表尚未就绪',
+        chart.models.length ? 'success' : 'warning'
+      );
+      if (!chart.models.length && !options.retry) scheduleRetry(options, 1400);
+      return payload;
+    } finally {
+      state.collecting = false;
+    }
+  }
+
+  async function directSync(options = {}) {
+    return collectAndSignal(options);
+  }
+
+  function installSyncOverride() {
+    window.__TOKEN_ON_KINDLE_SYNC__ = directSync;
+    const button = [...document.querySelectorAll('#__token_on_kindle_toolbar button')]
+      .find(element => clean(element.textContent) === '同步至 Kindle');
+    if (button && button.dataset.directChartReader !== 'true') {
+      button.dataset.directChartReader = 'true';
+      button.onclick = () => directSync({ manual: true });
+    }
+  }
+
+  function resetDomCache() {
+    state.section = null;
+    state.chart = null;
+    state.cards.clear();
+  }
+
+  function start() {
+    installSyncOverride();
+    for (const delay of [1200, 3200, 6500]) {
+      setTimeout(() => {
+        installSyncOverride();
+        collectAndSignal({ automatic: true, startup: true }).catch(() => {});
+      }, delay);
+    }
+  }
+
+  window.addEventListener('pageshow', () => {
+    resetDomCache();
+    installSyncOverride();
+    scheduleRetry({ automatic: true, pageshow: true }, 500);
+  });
+  window.addEventListener('popstate', () => {
+    if (location.href === state.lastHref) return;
+    state.lastHref = location.href;
+    resetDomCache();
+    scheduleRetry({ automatic: true, navigation: true }, 700);
+  });
+  window.addEventListener('hashchange', () => {
+    state.lastHref = location.href;
+    resetDomCache();
+    scheduleRetry({ automatic: true, navigation: true }, 700);
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    installSyncOverride();
+    scheduleRetry({ automatic: true, visible: true }, 500);
+  });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+})();
+

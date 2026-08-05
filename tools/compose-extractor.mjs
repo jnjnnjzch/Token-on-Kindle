@@ -16,6 +16,21 @@ const lf = value => value.replaceAll('\r\n', '\n');
 
 const signalCompactor = `(() => {
   'use strict';
+  const BRIDGE_ORIGIN = 'https://token-on-kindle.invalid';
+  let bridgeSequence = 0;
+  window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__ = (kind, value, encoded = '') => {
+    const path = kind === 'signal'
+      ? '/signal/' + encodeURIComponent(value) + '/' + encoded
+      : '/action/' + encodeURIComponent(value);
+    const url = BRIDGE_ORIGIN + path + '?nonce=' + Date.now() + '-' + (++bridgeSequence);
+    try {
+      location.assign(url);
+      return true;
+    } catch (error) {
+      console.error('[Token on Kindle] navigation bridge failed', error);
+      return false;
+    }
+  };
   const defined = object => Object.fromEntries(Object.entries(object || {}).filter(([, value]) => value !== undefined));
   const compactDeepSeekModel = model => model ? defined({
     name: model.name,
@@ -118,8 +133,12 @@ canonical = canonical.replace(
   "JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.(source, { ...payload, updateIntervalMinutes: syncState.refreshMinutes, syncRequestedAt: syncState.syncRequestedAt }) || payload)"
 );
 canonical = canonical.replace(
+  "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;",
+  "document.title = `__TOKEN_ON_KINDLE__:${source}:${encoded}`;\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', source, encoded);"
+);
+canonical = canonical.replace(
   'hide.onclick = () => window.close();',
-  "hide.onclick = () => { document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard'; };"
+  "hide.onclick = () => {\n    document.title = '__TOKEN_ON_KINDLE_ACTION__:dashboard';\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('action', 'dashboard');\n  };"
 );
 canonical = canonical.replace(
   "setToolbarStatus(options.manual ? '已同步至 Kindle' : '后台同步完成', 'success');",
@@ -157,6 +176,10 @@ deepseekReader = deepseekReader
     "JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.('deepseek', { ...payload, updateIntervalMinutes: refreshMinutes, syncRequestedAt }) || payload)"
   )
   .replace(
+    '    document.title = `__TOKEN_ON_KINDLE__:deepseek:${encodeSignal(payload)}`;',
+    "    const encoded = encodeSignal(payload);\n    document.title = `__TOKEN_ON_KINDLE__:deepseek:${encoded}`;\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'deepseek', encoded);"
+  )
+  .replace(
     "status('已同步余额、Flash/Pro Token 与缓存明细', 'success');",
     "status('已发送余额、Flash/Pro Token 与缓存明细', 'success');"
   );
@@ -170,6 +193,10 @@ volcengineReader = volcengineReader
   .replace(
     'JSON.stringify({ ...payload, updateIntervalMinutes: refreshMinutes, syncRequestedAt })',
     "JSON.stringify(window.__TOKEN_ON_KINDLE_COMPACT_SIGNAL__?.('volcengine', { ...payload, updateIntervalMinutes: refreshMinutes, syncRequestedAt }) || payload)"
+  )
+  .replace(
+    '    document.title = `__TOKEN_ON_KINDLE__:volcengine:${encodeSignal(payload)}`;',
+    "    const encoded = encodeSignal(payload);\n    document.title = `__TOKEN_ON_KINDLE__:volcengine:${encoded}`;\n    window.__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__?.('signal', 'volcengine', encoded);"
   )
   .replace('`已同步 AFP 与 ${chart.models.length} 个模型`', '`已发送 AFP 与 ${chart.models.length} 个模型`')
   .replace("'已同步 AFP；模型图表尚未就绪'", "'已发送 AFP；模型图表尚未就绪'");
@@ -197,6 +224,8 @@ const output = `${GENERATED}\n${signalCompactor}\n${deepseekModules}\n${volcengi
 if (!output.includes('platform-internal-api')) throw new Error('DeepSeek direct reader missing');
 if (!output.includes('getEchartsInstance')) throw new Error('Volcengine direct reader missing');
 if (!output.includes('__TOKEN_ON_KINDLE_COMPACT_SIGNAL__')) throw new Error('compact signal transport missing');
+if (!output.includes('__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__')) throw new Error('navigation bridge transport missing');
+if (!output.includes('token-on-kindle.invalid')) throw new Error('navigation bridge host missing');
 if (!output.includes('__TOKEN_ON_KINDLE_ACTION__:dashboard')) throw new Error('native source-window hide action missing');
 if (output.includes('new MutationObserver')) throw new Error('continuous DOM observer remains active');
 if (output.includes("window.addEventListener('beforeunload'")) throw new Error('close-on-reload handler remains active');
