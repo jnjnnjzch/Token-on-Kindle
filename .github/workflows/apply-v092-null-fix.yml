@@ -2,7 +2,8 @@ name: Apply verified null-render fix
 
 on:
   push:
-    branches: [agent/v0.9.2-fix-null-source-render]
+    branches:
+      - "agent/v0.9.2-fix-null-source-render"
 
 permissions:
   contents: write
@@ -13,76 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/v0.9.2-fix-null-source-render
-      - name: Apply verified renderer fix and regression test
-        shell: python
-        run: |
-          from pathlib import Path
-
-          renderer_path = Path('web/kindle-renderer.js')
-          renderer = renderer_path.read_text(encoding='utf-8')
-          replacements = {
-              "function drawDeepSeek(ctx, deepseek = {}, box) {\n": "function drawDeepSeek(ctx, deepseek, box) {\n  deepseek = deepseek || {};\n",
-              "function normalizeVolcengineWindows(volcengine = {}) {\n": "function normalizeVolcengineWindows(volcengine) {\n  volcengine = volcengine || {};\n",
-              "export function normalizeVolcengineModels(volcengine = {}) {\n": "export function normalizeVolcengineModels(volcengine) {\n  volcengine = volcengine || {};\n",
-              "function drawVolcengine(ctx, volcengine = {}, box) {\n": "function drawVolcengine(ctx, volcengine, box) {\n  volcengine = volcengine || {};\n",
-          }
-          for old, new in replacements.items():
-              if old in renderer:
-                  if renderer.count(old) != 1:
-                      raise SystemExit(f'unexpected renderer marker count for {old.strip()!r}')
-                  renderer = renderer.replace(old, new, 1)
-              elif new not in renderer:
-                  raise SystemExit(f'missing renderer marker for {old.strip()!r}')
-          renderer_path.write_text(renderer, encoding='utf-8')
-
-          test_path = Path('tests/kindle-renderer.test.mjs')
-          test_text = test_path.read_text(encoding='utf-8')
-          old_import = "import { cacheRateToRatio, modelTokenBreakdown } from '../web/kindle-renderer.js';"
-          new_import = "import { cacheRateToRatio, modelTokenBreakdown, renderKindleDashboard } from '../web/kindle-renderer.js';"
-          if old_import in test_text:
-              test_text = test_text.replace(old_import, new_import, 1)
-          elif new_import not in test_text:
-              raise SystemExit('renderer test import marker missing')
-
-          marker = "test('dashboard startup tolerates null source payloads'"
-          if marker not in test_text:
-              test_text += """
-
-test('dashboard startup tolerates null source payloads', () => {
-  const noOp = () => {};
-  const context = new Proxy({
-    save: noOp,
-    restore: noOp,
-    setTransform: noOp,
-    clearRect: noOp,
-    fillRect: noOp,
-    strokeRect: noOp,
-    beginPath: noOp,
-    moveTo: noOp,
-    lineTo: noOp,
-    stroke: noOp,
-    fillText: noOp
-  }, {
-    set(target, property, value) {
-      target[property] = value;
-      return true;
-    }
-  });
-
-  assert.doesNotThrow(() => renderKindleDashboard(context, {
-    codex: null,
-    deepseek: null,
-    volcengine: null,
-    displaySources: { codex: true, deepseek: true, volcengine: true }
-  }));
-});
-"""
-          test_path.write_text(test_text, encoding='utf-8')
-      - name: Verify focused regression test
+          ref: "agent/v0.9.2-fix-null-source-render"
+      - name: Apply verified product patch
+        run: python tools/apply-v092-null-fix.py
+      - name: Run focused regression test
         run: node --test tests/kindle-renderer.test.mjs
       - name: Commit verified product change
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
