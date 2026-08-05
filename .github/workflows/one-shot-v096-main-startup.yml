@@ -1,0 +1,60 @@
+name: One-shot v0.9.6 main startup repair
+
+on:
+  push:
+    branches:
+      - agent/fix-main-window-startup-v096
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-main-window-startup-v096
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply startup stability patch
+        run: |
+          python3 tools/one-shot-v096-main-startup.py
+          node tools/compose-extractor.mjs
+          node tools/compose-extractor.mjs
+          node tools/sync-version.mjs v0.9.6
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+          rm -f package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-package-lock
+
+      - name: Run complete JavaScript test suite
+        run: npm test
+
+      - name: Install Tauri Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Validate Rust formatting and compile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Remove temporary patch files and commit
+        run: |
+          rm -f tools/one-shot-v096-main-startup.py
+          rm -f .github/workflows/one-shot-v096-main-startup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --check
+          git add -A
+          git commit -m "v0.9.6: isolate main window startup"
+          git push origin HEAD:agent/fix-main-window-startup-v096
