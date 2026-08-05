@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheRateToRatio, modelTokenBreakdown } from '../web/kindle-renderer.js';
+import { cacheRateToRatio, modelTokenBreakdown, renderKindleDashboard } from '../web/kindle-renderer.js';
 
 test('model cache bars use the displayed cache percentage', () => {
   assert.equal(cacheRateToRatio(75), 0.75);
@@ -27,4 +27,34 @@ test('model cards preserve the three DeepSeek token categories', () => {
       outputTokens: 250_000
     }
   );
+});
+
+
+test('dashboard startup tolerates null source payloads', () => {
+  const noOp = () => {};
+  const context = new Proxy({
+    save: noOp,
+    restore: noOp,
+    setTransform: noOp,
+    clearRect: noOp,
+    fillRect: noOp,
+    strokeRect: noOp,
+    beginPath: noOp,
+    moveTo: noOp,
+    lineTo: noOp,
+    stroke: noOp,
+    fillText: noOp
+  }, {
+    set(target, property, value) {
+      target[property] = value;
+      return true;
+    }
+  });
+
+  assert.doesNotThrow(() => renderKindleDashboard(context, {
+    codex: null,
+    deepseek: null,
+    volcengine: null,
+    displaySources: { codex: true, deepseek: true, volcengine: true }
+  }));
 });
