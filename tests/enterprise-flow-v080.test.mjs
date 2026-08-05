@@ -16,13 +16,11 @@ test('enterprise Agent Plan capture is explicitly anchored to the AFP usage view
   assert.match(extractor, /windows/);
 });
 
-test('enterprise background refresh captures the confirmed view in the shared native batch', () => {
-  assert.match(native, /for label in \["codex-login", "deepseek-login"\]/);
-  assert.match(native, /get_webview_window\("volcengine-login"\)/);
-  assert.match(native, /let sync_requested_at = timestamp\(\);/);
-  assert.match(native, /automatic: true, refreshMinutes: \{refresh_minutes\}, syncRequestedAt:/);
-  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
-  assert.doesNotMatch(native, /for label in \["codex-login", "deepseek-login", "volcengine-login"\]/);
+test('enterprise background refresh reloads the confirmed view in the shared native batch', () => {
+  const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
+  assert.match(refreshBlock, /for label in \["codex-login", "deepseek-login", "volcengine-login"\]/);
+  assert.match(refreshBlock, /\.eval\("location\.reload\(\)"\)/);
+  assert.doesNotMatch(refreshBlock, /background_refresh_window|automatic: true|syncRequestedAt|sessionStorage/);
 });
 
 test('source selection is only Codex, DeepSeek, and Volcengine', () => {
