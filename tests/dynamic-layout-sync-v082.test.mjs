@@ -32,14 +32,16 @@ test('DeepSeek summary and model sections adapt across all card heights', () => 
   assert.match(renderer, /balancedVerticalFlow\(height, \[headerHeight, totalHeight, breakdownHeight, cacheHeight\]/);
 });
 
-test('all sources share the native refresh batch and no page owns a recurring timer', () => {
+test('all sources share one native refresh batch and no page owns a recurring timer', () => {
   assert.doesNotMatch(extractor, /UPDATE_MS|setInterval\(\(\) => collectAndSignal/);
   assert.match(extractor, /updateIntervalMinutes: syncState\.refreshMinutes/);
   assert.match(extractor, /syncRequestedAt: syncState\.syncRequestedAt/);
   assert.match(extractor, /const marker = location\.href;/);
   assert.doesNotMatch(extractor, /document\.body\?\.innerText\?\.length/);
-  assert.match(native, /let sync_requested_at = timestamp\(\);/);
-  assert.match(native, /background_refresh_window\(&window, true, refresh_minutes, &sync_requested_at\)/);
-  assert.match(native, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)/);
+
+  const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
+  assert.match(refreshBlock, /\["codex-login", "deepseek-login", "volcengine-login"\]/);
+  assert.match(refreshBlock, /\.eval\("location\.reload\(\)"\)/);
+  assert.doesNotMatch(refreshBlock, /background_refresh_window|sessionStorage|sync_requested_at|refresh_minutes/);
   assert.match(renderer, /syncRequestedAt \|\| state\[source\]\?\.capturedAt/);
 });
