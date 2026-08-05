@@ -1,0 +1,176 @@
+from pathlib import Path
+
+
+def replace_once(path, old, new):
+    file = Path(path)
+    text = file.read_text(encoding='utf-8')
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{path}: expected one match, found {count}')
+    file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+
+# Reuse the already verified core patch from the first one-shot workflow.
+source = Path('.github/workflows/one-shot-v095-long-running-sync.yml').read_text(encoding='utf-8')
+start_marker = "          python3 - <<'PY'\n"
+end_marker = "\n          PY\n"
+start = source.index(start_marker) + len(start_marker)
+end = source.index(end_marker, start)
+lines = source[start:end].splitlines()
+script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+exec(compile(script, '/tmp/v095-core-patch.py', 'exec'))
+
+# Remove the final dormant response-array fallback from the canonical extractor.
+path = Path('web/extractor-base.js')
+text = path.read_text(encoding='utf-8')
+start = text.index('  function collectVolcengine() {')
+end = text.index('  async function collectDeepSeek()', start)
+replacement = '''  function collectVolcengine() {
+    const windows = VOLCENGINE_WINDOWS.map(collectVolcengineWindow).filter(Boolean);
+    const models = volcengineModelsFromDom();
+    const modelUsageSource = models.length ? 'dom' : 'none';
+    return {
+      source,
+      capturedAt: new Date().toISOString(),
+      plan: 'Agent Plan 企业版',
+      unit: 'AFP',
+      windows,
+      models,
+      modelUsage: {
+        source: modelUsageSource,
+        sourcePath: null,
+        capturedAt: null
+      },
+      url: location.href,
+      diagnostics: {
+        primarySource: windows.length ? 'enterprise-usage-view' : 'waiting-for-enterprise-usage-view',
+        instruction: windows.length ? null : '进入 Agent Plan 企业版的“用量统计”，看到三张 AFP 用量卡后点击“同步至 Kindle”',
+        quotaCount: windows.length,
+        usageViewReady: volcengineUsageReady(),
+        modelUsageSource,
+        modelCount: models.length
+      }
+    };
+  }
+
+'''
+path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+
+# Hidden native WebViews can report zero client bounds; exact control matching is sufficient.
+replace_once(
+    'web/volcengine-chart-reader.js',
+    '''        const rect = control.getBoundingClientRect();
+        if (!rect.width || !rect.height) continue;
+''',
+    '''        if (!control.isConnected) continue;
+'''
+)
+
+# Update legacy tests to the isolated three-source refresh contract.
+replace_once(
+    'tests/dynamic-layout-sync-v082.test.mjs',
+    '''  assert.match(refreshBlock, /\\["codex-login", "deepseek-login"\\]/);
+  assert.match(refreshBlock, /background_refresh_window\\(&window, true, refresh_minutes, &sync_requested_at\\)\\?/);
+  assert.match(refreshBlock, /background_refresh_window\\(&window, false, refresh_minutes, &sync_requested_at\\)\\?/);
+''',
+    '''  assert.match(refreshBlock, /\\("codex-login", "Codex", true\\)/);
+  assert.match(refreshBlock, /\\("deepseek-login", "DeepSeek", true\\)/);
+  assert.match(refreshBlock, /\\("volcengine-login", "火山方舟", false\\)/);
+  assert.match(refreshBlock, /match background_refresh_window\\(/);
+  assert.match(refreshBlock, /Err\\(error\\) => failed\\.push/);
+'''
+)
+
+replace_once(
+    'tests/enterprise-flow-v080.test.mjs',
+    '''  assert.match(refreshBlock, /for label in \\["codex-login", "deepseek-login"\\]/);
+  assert.match(refreshBlock, /background_refresh_window\\(&window, true, refresh_minutes, &sync_requested_at\\)\\?/);
+  assert.match(refreshBlock, /get_webview_window\\("volcengine-login"\\)/);
+  assert.match(refreshBlock, /background_refresh_window\\(&window, false, refresh_minutes, &sync_requested_at\\)\\?/);
+  const volcengineBlock = refreshBlock.slice(refreshBlock.indexOf('get_webview_window("volcengine-login")'));
+  assert.doesNotMatch(volcengineBlock, /location\\.reload\\(\\)/);
+''',
+    '''  assert.match(refreshBlock, /\\("codex-login", "Codex", true\\)/);
+  assert.match(refreshBlock, /\\("deepseek-login", "DeepSeek", true\\)/);
+  assert.match(refreshBlock, /\\("volcengine-login", "火山方舟", false\\)/);
+  assert.match(refreshBlock, /reload_page/);
+  const tupleStart = refreshBlock.indexOf('(\"volcengine-login\", \"火山方舟\", false)');
+  assert.ok(tupleStart >= 0);
+  assert.doesNotMatch(refreshBlock.slice(tupleStart), /\\("volcengine-login", "火山方舟", true\\)/);
+'''
+)
+
+replace_once(
+    'tests/volcengine-model-usage-v083.test.mjs',
+    '''  const guard = compiled.indexOf('__TOKEN_ON_KINDLE_VOLCENGINE_CAPTURE_INSTALLED__ = true');
+  assert.ok(guard >= 0);
+  assert.doesNotMatch(compiled, /\\n\\s*installVolcengineNetworkCapture\\(\\);/);
+''',
+    '''  assert.doesNotMatch(compiled, /installVolcengineNetworkCapture/);
+  assert.doesNotMatch(compiled, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
+'''
+)
+
+replace_once(
+    'tests/volcengine-sticky-refresh-v094.test.mjs',
+    '''test('desktop refresh preserves the selected Volcengine SPA view', () => {
+  assert.match(rust, /for label in \\["codex-login", "deepseek-login"\\]/);
+  assert.match(rust, /background_refresh_window\\(&window, true, refresh_minutes, &sync_requested_at\\)\\?/);
+  assert.match(rust, /get_webview_window\\("volcengine-login"\\)/);
+  assert.match(rust, /background_refresh_window\\(&window, false, refresh_minutes, &sync_requested_at\\)\\?/);
+  const start = rust.indexOf('if let Some(window) = app.get_webview_window("volcengine-login")');
+  const end = rust.indexOf('if refreshed == 0', start);
+  const volcengineBlock = rust.slice(start, end);
+  assert.ok(volcengineBlock.length > 0);
+  assert.doesNotMatch(volcengineBlock, /location\\.reload\\(\\)/);
+});
+''',
+    '''test('desktop refresh preserves the selected Volcengine SPA view', () => {
+  const refreshBlock = rust.match(/fn reload_sources\\(app: &AppHandle\\)[\\s\\S]*?#\\[cfg\\(any/)?.[0] || '';
+  assert.match(refreshBlock, /\\("codex-login", "Codex", true\\)/);
+  assert.match(refreshBlock, /\\("deepseek-login", "DeepSeek", true\\)/);
+  assert.match(refreshBlock, /\\("volcengine-login", "火山方舟", false\\)/);
+  assert.match(refreshBlock, /match background_refresh_window\\(/);
+  assert.match(refreshBlock, /Ok\\(RefreshSummary \\{ refreshed, failed \\}\\)/);
+});
+'''
+)
+
+replace_once(
+    'tests/windows-background-focus-v081.test.mjs',
+    '''  assert.match(refreshBlock, /\\["codex-login", "deepseek-login"\\]/);
+  assert.match(native, /fn background_refresh_window/);
+  assert.match(native, /if reload_page/);
+  assert.match(native, /location\\.reload\\(\\)/);
+  assert.match(refreshBlock, /background_refresh_window\\(&window, false, refresh_minutes, &sync_requested_at\\)\\?/);
+''',
+    '''  assert.match(refreshBlock, /\\("codex-login", "Codex", true\\)/);
+  assert.match(refreshBlock, /\\("deepseek-login", "DeepSeek", true\\)/);
+  assert.match(refreshBlock, /\\("volcengine-login", "火山方舟", false\\)/);
+  assert.match(native, /fn background_refresh_window/);
+  assert.match(native, /if reload_page/);
+  assert.match(native, /location\\.reload\\(\\)/);
+  assert.match(refreshBlock, /Err\\(error\\) => failed\\.push/);
+'''
+)
+
+# Keep README and release asset names aligned with v0.9.5.
+path = Path('README.md')
+text = path.read_text(encoding='utf-8')
+text = text.replace('当前稳定版：**v0.9.4**', '当前稳定版：**v0.9.5**', 1)
+text = text.replace('/releases/tag/v0.9.4)', '/releases/tag/v0.9.5)', 1)
+text = text.replace('Token-on-Kindle-v0.9.4-', 'Token-on-Kindle-v0.9.5-')
+marker = '## v0.9.4 重点修复\n'
+section = '''## v0.9.5 长期运行稳定性修复
+
+- 三个数据源独立刷新；某个 WebView 失败不会阻断其他来源。
+- 火山方舟继续保留企业版 SPA 页面，同时在当前视图内触发“查询/刷新”后再读取 AFP 与模型图表。
+- 同步钩子缺失不再静默成功，并会在控制中心显示部分失败来源。
+- 火山图表缓存超过 90 秒后失效，避免长期重复发送旧结果。
+- PNG 后台线程增加 30 秒超时、终止和自动重建，避免图片发布永久卡住。
+- 删除未使用的火山完整响应缓存与遗留读取路径。
+
+'''
+if marker not in text:
+    raise SystemExit('README v0.9.4 marker missing')
+path.write_text(text.replace(marker, section + marker, 1), encoding='utf-8')
