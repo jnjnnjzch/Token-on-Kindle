@@ -6,12 +6,13 @@ const native = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.ur
 const extractor = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
 const releaseExtractor = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
 
-test('background refresh follows the stable v0.6 reload path', () => {
+test('background refresh reloads stateless sources but preserves the Volcengine view', () => {
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
-  assert.match(refreshBlock, /\["codex-login", "deepseek-login", "volcengine-login"\]/);
-  assert.match(refreshBlock, /window\s*\.eval\("location\.reload\(\)"\)/);
-  assert.doesNotMatch(native, /fn background_refresh_window/);
-  assert.doesNotMatch(refreshBlock, /sessionStorage|window\.blur\(\)|window\.hide\(\)|is_focused/);
+  assert.match(refreshBlock, /\["codex-login", "deepseek-login"\]/);
+  assert.match(native, /fn background_refresh_window/);
+  assert.match(native, /if reload_page/);
+  assert.match(native, /location\.reload\(\)/);
+  assert.match(refreshBlock, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)\?/);
 });
 
 test('hiding a source window does not summon the dashboard', () => {

@@ -40,8 +40,9 @@ test('all sources share one native refresh batch and no page owns a recurring ti
   assert.doesNotMatch(extractor, /document\.body\?\.innerText\?\.length/);
 
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
-  assert.match(refreshBlock, /\["codex-login", "deepseek-login", "volcengine-login"\]/);
-  assert.match(refreshBlock, /\.eval\("location\.reload\(\)"\)/);
-  assert.doesNotMatch(refreshBlock, /background_refresh_window|sessionStorage|sync_requested_at|refresh_minutes/);
+  assert.match(refreshBlock, /\["codex-login", "deepseek-login"\]/);
+  assert.match(refreshBlock, /background_refresh_window\(&window, true, refresh_minutes, &sync_requested_at\)\?/);
+  assert.match(refreshBlock, /background_refresh_window\(&window, false, refresh_minutes, &sync_requested_at\)\?/);
+  assert.match(extractor, /window\.__TOKEN_ON_KINDLE_SYNC__/);
   assert.match(renderer, /syncRequestedAt \|\| state\[source\]\?\.capturedAt/);
 });
