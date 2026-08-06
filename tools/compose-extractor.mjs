@@ -102,6 +102,27 @@ const signalCompactor = `(() => {
 })();`;
 
 let canonical = lf(await readFile(baseUrl, 'utf8'));
+const volcengineDomStart = canonical.indexOf("  const VOLCENGINE_WINDOWS = [");
+const volcengineDomEnd = canonical.indexOf("  async function collectDeepSeek()", volcengineDomStart);
+if (volcengineDomStart < 0 || volcengineDomEnd < 0) throw new Error('canonical Volcengine DOM block changed');
+canonical = `${canonical.slice(0, volcengineDomStart)}${canonical.slice(volcengineDomEnd)}`;
+canonical = canonical.replace(`      if (source === 'volcengine' && !volcengineUsageReady()) {
+        setToolbarStatus('请进入企业版 Agent Plan → 用量统计');
+        return;
+      }
+      const payload = source === 'codex' ? collectCodex() : source === 'deepseek' ? await collectDeepSeek() : collectVolcengine();`, `      if (source === 'volcengine') {
+        setToolbarStatus('等待火山控制台接口 Worker');
+        return;
+      }
+      const payload = source === 'codex' ? collectCodex() : await collectDeepSeek();`);
+canonical = canonical.replace(
+  "      if (source === 'volcengine' && !volcengineUsageReady()) return;",
+  "      if (source === 'volcengine') return;"
+);
+canonical = canonical.replace(
+  "note.textContent = source === 'volcengine' ? '进入企业版“用量统计”后点击同步' : '登录并打开用量页面后点击同步';",
+  "note.textContent = source === 'volcengine' ? '登录后由控制台接口 Worker 自动同步' : '登录并打开用量页面后点击同步';"
+);
 canonical = canonical.replace(`  window.addEventListener('beforeunload', () => {
     if (!document.hasFocus()) {
       try { window.close(); } catch { /* native window guard */ }
@@ -198,6 +219,9 @@ if (output.includes('__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__')) throw new E
 if (output.includes('__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__')) throw new Error('Volcengine ReactECharts bridge remains in production build');
 if (output.includes('模型调用明细') && output.includes('getEchartsInstance')) throw new Error('Volcengine chart reader remains in production build');
 if (output.includes('__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__')) throw new Error('legacy Volcengine response cache remains active');
+if (output.includes('VOLCENGINE_WINDOWS') || output.includes('collectVolcengineWindow') || output.includes('volcengineUsageReady') || output.includes('volcengineModelsFromDom')) {
+  throw new Error('Volcengine DOM fallback remains in production build');
+}
 const current = await readFile(extractorUrl, 'utf8').catch(() => '');
 if (lf(current) !== output) await writeFile(extractorUrl, output);
 console.log('Composed stable Codex/DeepSeek readers and Volcengine internal API worker');
