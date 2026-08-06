@@ -23,9 +23,12 @@ test('startup warm-up failures cannot terminate the dashboard', () => {
   assert.doesNotMatch(setup, /create_source_window\([^)]*\)\?/);
 });
 
-test('refresh command has a hard UI timeout and auto-sync copy', () => {
+test('refresh command has a hard UI timeout and API-worker copy', () => {
   assert.match(app, /REFRESH_COMMAND_TIMEOUT_MS = 15_000/);
   assert.match(app, /刷新命令超过 15 秒未返回/);
   assert.match(app, /登录后会自动同步/);
-  assert.match(app, /识别到 AFP 卡片后会自动同步/);
+  assert.match(app, /接口 Worker 会自动建立会话并同步/);
+  assert.match(app, /登录后会自动建立接口会话并切换到轻量后台 Worker/);
+  assert.match(app, /已触发刷新，等待接口返回/);
+  assert.doesNotMatch(app, /识别到 AFP 卡片后会自动同步/);
 });
