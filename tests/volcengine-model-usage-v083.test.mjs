@@ -88,13 +88,21 @@ test('renderer keeps only models with latest token usage and sorts by today toke
   assert.equal(models[0].totalTokens, 50);
 });
 
-test('packaged extractor disables legacy Volcengine interception before reading ReactECharts', () => {
-  for (const marker of ['模型调用明细', '__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__', '__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__', 'react-component']) {
-    assert.match(compiled, new RegExp(marker));
+test('packaged extractor uses the Volcengine internal API worker and excludes DOM/ECharts readers', () => {
+  for (const marker of [
+    'GetAgentPlanSeatAFPUsage',
+    'ListAgentPlanUsageDetailObjects',
+    'GetAgentPlanSeatUsageDetails',
+    '__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_INTERNAL_API__',
+    'v0.6.2-reload-worker'
+  ]) {
+    assert.match(compiled, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.match(compiled, /source = host === 'chatgpt\.com'.*volcengine/s);
+  assert.doesNotMatch(compiled, /__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__/);
+  assert.doesNotMatch(compiled, /__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__/);
   assert.doesNotMatch(compiled, /installVolcengineNetworkCapture/);
   assert.doesNotMatch(compiled, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
-  assert.match(compiled, /source = host === 'chatgpt\.com'.*volcengine/s);
-  assert.doesNotMatch(compiled, /setInterval\(\(\) => location\.reload\(\), UPDATE_MS\)/);
+  assert.doesNotMatch(compiled, /getEchartsInstance/);
   assert.doesNotMatch(base, /TOKEN-ON-KINDLE v0\.8\.4 DIRECT CHART BUILD/);
 });
