@@ -43,9 +43,34 @@ jobs:
         run: npm install --no-package-lock
 
       - name: Run the complete JavaScript, parser, renderer, and repository suite
-        run: npm test
+        id: javascript_suite
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee /tmp/v097-npm-test.log
+          status=${PIPESTATUS[0]}
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Preserve the complete failure set without product changes
+        if: steps.javascript_suite.outputs.exit_code != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          cp /tmp/v097-npm-test.log diagnostics/v097-npm-test.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f diagnostics/v097-npm-test.log
+          git commit -m "diagnostics: capture v0.9.7 npm failures [skip ci]"
+          git push origin HEAD:agent/fix-background-refresh-v097
+
+      - name: Stop after diagnostic capture
+        if: steps.javascript_suite.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Install Tauri Linux system dependencies
+        if: steps.javascript_suite.outputs.exit_code == '0'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -53,12 +78,14 @@ jobs:
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Validate Rust formatting, runtime unit tests, and compilation
+        if: steps.javascript_suite.outputs.exit_code == '0'
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo test --manifest-path src-tauri/Cargo.toml --lib
           cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Commit only the fully validated repository state
+        if: steps.javascript_suite.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git diff --check
