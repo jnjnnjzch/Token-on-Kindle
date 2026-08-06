@@ -11,2251 +11,378 @@ TAP version 13
 # Subtest: dashboard setup returns without synchronously constructing external WebViews
 ok 1 - dashboard setup returns without synchronously constructing external WebViews
   ---
-  duration_ms: 1.391633
+  duration_ms: 1.324282
   type: 'test'
   ...
 # Subtest: window creation is independently serialized and auto-syncs after a matching page load
 ok 2 - window creation is independently serialized and auto-syncs after a matching page load
   ---
-  duration_ms: 0.370563
+  duration_ms: 0.379644
   type: 'test'
   ...
 # Subtest: manual, tray, and scheduled refresh share a receipt-driven native batch
-not ok 3 - manual, tray, and scheduled refresh share a receipt-driven native batch
+ok 3 - manual, tray, and scheduled refresh share a receipt-driven native batch
   ---
-  duration_ms: 1.594512
+  duration_ms: 0.362538
   type: 'test'
-  location: '/home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/background-refresh-v097.test.mjs:41:1'
-  failureType: 'testCodeFailure'
-  error: |-
-    The input did not match the regular expression /started\.push\(source_name\.to_string\(\)\)/. Input:
-    
-    'fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {\n' +
-      '    let state = app.state::<AppState>();\n' +
-      '    let now_ms = unix_millis();\n' +
-      '    let Some(sync_requested_at) = begin_refresh_batch(&state.source_runtime, now_ms)? else {\n' +
-      '        let snapshot = active_refresh_snapshot(&state.source_runtime)?;\n' +
-      '        let (requested_at, pending_ids) = snapshot\n' +
-      '            .map(|(requested_at, pending)| (Some(requested_at), pending))\n' +
-      '            .unwrap_or((None, Vec::new()));\n' +
-      '        return Ok(RefreshSummary {\n' +
-      '            requested_at,\n' +
-      '            expected: pending_ids.clone(),\n' +
-      '            refreshed: Vec::new(),\n' +
-      '            started: Vec::new(),\n' +
-      '            pending: pending_ids\n' +
-      '                .iter()\n' +
-      '                .map(|source| source_display_name(source))\n' +
-      '                .collect(),\n' +
-      '            failed: Vec::new(),\n' +
-      '            already_running: true,\n' +
-      '        });\n' +
-      '    };\n' +
-      '\n' +
-      '    let refresh_minutes = state.refresh.get();\n' +
-      '    let mut expected = Vec::new();\n' +
-      '    let mut pending = Vec::new();\n' +
-      '    let mut failed = Vec::new();\n' +
-      '\n' +
-      '    for (source, source_name, reload_page) in [\n' +
-      '        ("codex", "Codex", true),\n' +
-      '        ("deepseek", "DeepSeek", true),\n' +
-      '        ("volcengine", "火山方舟", false),\n' +
-      '    ] {\n' +
-      '        match spawn_source_refresh_worker(\n' +
-      '            app,\n' +
-      '            source,\n' +
-      '            source_name,\n' +
-      '            reload_page,\n' +
-      '            refresh_minutes,\n' +
-      '            &sync_requested_at,\n' +
-      '        ) {\n' +
-      '            Ok(()) => {\n' +
-      '                expected.push(source.to_string());\n' +
-      '                pending.push(source_name.to_string());\n' +
-      '            }\n' +
-      '            Err(error) => {\n' +
-      '                let _ = finish_refresh_source(&state.source_runtime, &sync_requested_at, source);\n' +
-      '                failed.push(error);\n' +
-      '            }\n' +
-      '        }\n' +
-      '    }\n' +
-      '\n' +
-      '    Ok(RefreshSummary {\n' +
-      '        requested_at: Some(sync_requested_at),\n' +
-      '        expected,\n' +
-      '        refreshed: Vec::new(),\n' +
-      '        started: Vec::new(),\n' +
-      '        pending,\n' +
-      '        failed,\n' +
-      '        already_running: false,\n' +
-      '    })\n' +
-      '}\n' +
-      '\n'
-    
-  code: 'ERR_ASSERTION'
-  name: 'AssertionError'
-  expected:
-  actual: |-
-    fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
-        let state = app.state::<AppState>();
-        let now_ms = unix_millis();
-        let Some(sync_requested_at) = begin_refresh_batch(&state.source_runtime, now_ms)? else {
-            let snapshot = active_refresh_snapshot(&state.source_runtime)?;
-            let (requested_at, pending_ids) = snapshot
-                .map(|(requested_at, pending)| (Some(requested_at), pending))
-                .unwrap_or((None, Vec::new()));
-            return Ok(RefreshSummary {
-                requested_at,
-                expected: pending_ids.clone(),
-                refreshed: Vec::new(),
-                started: Vec::new(),
-                pending: pending_ids
-                    .iter()
-                    .map(|source| source_display_name(source))
-                    .collect(),
-                failed: Vec::new(),
-                already_running: true,
-            });
-        };
-    
-        let refresh_minutes = state.refresh.get();
-        let mut expected = Vec::new();
-        let mut pending = Vec::new();
-        let mut failed = Vec::new();
-    
-        for (source, source_name, reload_page) in [
-            ("codex", "Codex", true),
-            ("deepseek", "DeepSeek", true),
-            ("volcengine", "火山方舟", false),
-        ] {
-            match spawn_source_refresh_worker(
-                app,
-                source,
-                source_name,
-                reload_page,
-                refresh_minutes,
-                &sync_requested_at,
-            ) {
-                Ok(()) => {
-                    expected.push(source.to_string());
-                    pending.push(source_name.to_string());
-                }
-                Err(error) => {
-                    let _ = finish_refresh_source(&state.source_runtime, &sync_requested_at, source);
-                    failed.push(error);
-                }
-            }
-        }
-    
-        Ok(RefreshSummary {
-            requested_at: Some(sync_requested_at),
-            expected,
-            refreshed: Vec::new(),
-            started: Vec::new(),
-            pending,
-            failed,
-            already_running: false,
-        })
-    }
-    
-    
-  operator: 'match'
-  stack: |-
-    TestContext.<anonymous> (file:///home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/background-refresh-v097.test.mjs:47:10)
-    Test.runInAsyncScope (node:async_hooks:214:14)
-    Test.run (node:internal/test_runner/test:1047:25)
-    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
-    Test.postRun (node:internal/test_runner/test:1173:19)
-    Test.run (node:internal/test_runner/test:1101:12)
-    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
   ...
 # Subtest: tray event handlers never create or refresh WebViews synchronously
 ok 4 - tray event handlers never create or refresh WebViews synchronously
   ---
-  duration_ms: 0.259225
+  duration_ms: 0.362779
   type: 'test'
   ...
 # Subtest: control center releases the button and reports actual batch receipts
 ok 5 - control center releases the button and reports actual batch receipts
   ---
-  duration_ms: 0.314308
+  duration_ms: 0.249066
   type: 'test'
   ...
 # Subtest: all generated source readers autonomously collect after hidden-window startup
 ok 6 - all generated source readers autonomously collect after hidden-window startup
   ---
-  duration_ms: 1.891048
+  duration_ms: 0.301676
   type: 'test'
   ...
 # Subtest: persistent pipeline runs Rust source-runtime tests on Linux
 ok 7 - persistent pipeline runs Rust source-runtime tests on Linux
   ---
-  duration_ms: 0.210314
+  duration_ms: 2.284203
   type: 'test'
   ...
 # Subtest: runtime settings expose distinct browser and image URLs
 ok 8 - runtime settings expose distinct browser and image URLs
   ---
-  duration_ms: 0.834451
+  duration_ms: 0.781451
   type: 'test'
   ...
 # Subtest: extracts weekly Codex remaining quota
 ok 9 - extracts weekly Codex remaining quota
   ---
-  duration_ms: 2.263484
+  duration_ms: 2.101947
   type: 'test'
   ...
 # Subtest: does not invent a removed 5-hour bucket
 ok 10 - does not invent a removed 5-hour bucket
   ---
-  duration_ms: 0.66793
+  duration_ms: 0.639097
   type: 'test'
   ...
 # Subtest: extracts DeepSeek labeled values
 ok 11 - extracts DeepSeek labeled values
   ---
-  duration_ms: 2.680953
+  duration_ms: 2.428862
   type: 'test'
   ...
 # Subtest: encodes a genuine 8-bit grayscale 600x800 PNG
 ok 12 - encodes a genuine 8-bit grayscale 600x800 PNG
   ---
-  duration_ms: 37.430488
+  duration_ms: 41.909003
   type: 'test'
   ...
 # Subtest: flattens alpha when converting RGBA
 ok 13 - flattens alpha when converting RGBA
   ---
-  duration_ms: 0.221665
+  duration_ms: 0.296939
   type: 'test'
   ...
 # Subtest: extractor composition is repeatable, CRLF-safe, and shared by Cargo
 ok 14 - extractor composition is repeatable, CRLF-safe, and shared by Cargo
   ---
-  duration_ms: 12.464685
+  duration_ms: 7.529131
   type: 'test'
   ...
 # Subtest: range cost falls back from the numeric value node to the full card text
 ok 15 - range cost falls back from the numeric value node to the full card text
   ---
-  duration_ms: 1.531996
+  duration_ms: 1.34261
   type: 'test'
   ...
 # Subtest: Cost uses an exact label so Total cost cannot be selected as the range cost
 ok 16 - Cost uses an exact label so Total cost cannot be selected as the range cost
   ---
-  duration_ms: 0.266318
+  duration_ms: 0.21797
   type: 'test'
   ...
 # Subtest: Chinese selected-range labels are supported without accepting 今日消耗
 ok 17 - Chinese selected-range labels are supported without accepting 今日消耗
   ---
-  duration_ms: 1.962401
+  duration_ms: 1.486366
   type: 'test'
   ...
 # Subtest: DeepSeek uses the Platform page APIs first and keeps page fallback isolated
 ok 18 - DeepSeek uses the Platform page APIs first and keeps page fallback isolated
   ---
-  duration_ms: 7.567065
+  duration_ms: 7.790126
   type: 'test'
   ...
 # Subtest: fixture contains the exact balance card without the alert text in its value node
 ok 19 - fixture contains the exact balance card without the alert text in its value node
   ---
-  duration_ms: 1.620492
+  duration_ms: 1.006541
   type: 'test'
   ...
 # Subtest: parses Flash and Pro daily cost from the chart tooltip
 ok 20 - parses Flash and Pro daily cost from the chart tooltip
   ---
-  duration_ms: 1.067537
+  duration_ms: 0.998009
   type: 'test'
   ...
 # Subtest: parses daily token composition and cache rate
 ok 21 - parses daily token composition and cache rate
   ---
-  duration_ms: 0.469298
+  duration_ms: 0.480807
   type: 'test'
   ...
 # Subtest: sums the whole month from daily internal API buckets when summary monthly fields are absent
 ok 22 - sums the whole month from daily internal API buckets when summary monthly fields are absent
   ---
-  duration_ms: 4.049606
+  duration_ms: 3.755457
   type: 'test'
   ...
 # Subtest: monthly totals include models outside the two daily display cards
 ok 23 - monthly totals include models outside the two daily display cards
   ---
-  duration_ms: 0.451424
+  duration_ms: 0.514297
   type: 'test'
   ...
 # Subtest: parses the actual DeepSeek amount/cost response schema by model and day
 ok 24 - parses the actual DeepSeek amount/cost response schema by model and day
   ---
-  duration_ms: 3.626143
+  duration_ms: 3.712813
   type: 'test'
   ...
 # Subtest: uses the latest API day when local and UTC dates are absent
 ok 25 - uses the latest API day when local and UTC dates are absent
   ---
-  duration_ms: 0.502329
+  duration_ms: 0.725467
   type: 'test'
   ...
 # Subtest: does not turn monthly totals into Flash or Pro daily values
 ok 26 - does not turn monthly totals into Flash or Pro daily values
   ---
-  duration_ms: 1.286036
+  duration_ms: 2.206556
   type: 'test'
   ...
 # Subtest: parses flat model/day records with cost and cache tokens
 ok 27 - parses flat model/day records with cost and cache tokens
   ---
-  duration_ms: 7.014504
+  duration_ms: 8.2292
   type: 'test'
   ...
 # Subtest: parses cost chart series split by model
 ok 28 - parses cost chart series split by model
   ---
-  duration_ms: 8.790133
+  duration_ms: 9.667404
   type: 'test'
   ...
 # Subtest: parses token chart whose model identity comes from request URL
 ok 29 - parses token chart whose model identity comes from request URL
   ---
-  duration_ms: 1.245249
+  duration_ms: 1.063839
   type: 'test'
   ...
 # Subtest: parses nested metric name/value objects
 ok 30 - parses nested metric name/value objects
   ---
-  duration_ms: 0.689049
+  duration_ms: 0.587258
   type: 'test'
   ...
 # Subtest: does not copy an unscoped range total into both models
 ok 31 - does not copy an unscoped range total into both models
   ---
-  duration_ms: 0.435114
+  duration_ms: 0.420505
   type: 'test'
   ...
 # Subtest: prefers the newest response for the same model/date/metric
 ok 32 - prefers the newest response for the same model/date/metric
   ---
-  duration_ms: 1.81202
+  duration_ms: 1.54823
   type: 'test'
   ...
 # Subtest: parses range cost when currency, amount, and unit are split across DOM lines
 ok 33 - parses range cost when currency, amount, and unit are split across DOM lines
   ---
-  duration_ms: 2.719657
+  duration_ms: 2.029828
   type: 'test'
   ...
 # Subtest: does not treat an unrelated bare number as money without a nearby currency marker
 ok 34 - does not treat an unrelated bare number as money without a nearby currency marker
   ---
-  duration_ms: 0.944337
+  duration_ms: 0.677164
   type: 'test'
   ...
 # Subtest: reads the visible DeepSeek summary cards from the current Usage page
 ok 35 - reads the visible DeepSeek summary cards from the current Usage page
   ---
-  duration_ms: 2.132079
+  duration_ms: 2.11674
   type: 'test'
   ...
 # Subtest: does not confuse model-section totals with the top summary cards
 ok 36 - does not confuse model-section totals with the top summary cards
   ---
-  duration_ms: 0.538127
+  duration_ms: 0.440065
   type: 'test'
   ...
 # Subtest: reads an inline balance card even when alert controls share the same line
 ok 37 - reads an inline balance card even when alert controls share the same line
   ---
-  duration_ms: 0.749311
+  duration_ms: 0.737055
   type: 'test'
   ...
 # Subtest: desktop integrations use the real app icon and native tray events
 ok 38 - desktop integrations use the real app icon and native tray events
   ---
-  duration_ms: 1.526385
+  duration_ms: 1.27719
   type: 'test'
   ...
 # Subtest: tray provides background, browser, update, and autostart controls
 ok 39 - tray provides background, browser, update, and autostart controls
   ---
-  duration_ms: 0.3797
+  duration_ms: 0.376479
   type: 'test'
   ...
 # Subtest: desktop UI mirrors state and tray update actions
 ok 40 - desktop UI mirrors state and tray update actions
   ---
-  duration_ms: 1.297437
+  duration_ms: 1.921214
   type: 'test'
   ...
 # Subtest: Linux has a safe close fallback and macOS uses menu bar mode
 ok 41 - Linux has a safe close fallback and macOS uses menu bar mode
   ---
-  duration_ms: 0.230541
+  duration_ms: 0.233643
   type: 'test'
   ...
 # Subtest: DeepSeek diagnostic summary keeps useful fields and removes noisy raw data
 ok 42 - DeepSeek diagnostic summary keeps useful fields and removes noisy raw data
   ---
-  duration_ms: 1.059902
+  duration_ms: 1.585076
   type: 'test'
   ...
 # Subtest: balanced vertical flow keeps internal gaps equal and bounded
 ok 43 - balanced vertical flow keeps internal gaps equal and bounded
   ---
-  duration_ms: 1.662811
+  duration_ms: 1.499496
   type: 'test'
   ...
 # Subtest: DeepSeek summary and model sections adapt across all card heights
 ok 44 - DeepSeek summary and model sections adapt across all card heights
   ---
-  duration_ms: 1.281306
+  duration_ms: 1.430562
   type: 'test'
   ...
 # Subtest: all sources share one native refresh batch and no page owns a recurring timer
 ok 45 - all sources share one native refresh batch and no page owns a recurring timer
   ---
-  duration_ms: 0.607646
+  duration_ms: 0.598584
   type: 'test'
   ...
 # Subtest: enterprise Agent Plan capture is explicitly anchored to the AFP usage view
 ok 46 - enterprise Agent Plan capture is explicitly anchored to the AFP usage view
   ---
-  duration_ms: 1.067567
+  duration_ms: 1.460548
   type: 'test'
   ...
 # Subtest: enterprise background refresh preserves the confirmed SPA view in the shared native batch
 ok 47 - enterprise background refresh preserves the confirmed SPA view in the shared native batch
   ---
-  duration_ms: 0.426659
+  duration_ms: 0.50279
   type: 'test'
   ...
 # Subtest: source selection is only Codex, DeepSeek, and Volcengine
 ok 48 - source selection is only Codex, DeepSeek, and Volcengine
   ---
-  duration_ms: 0.305241
+  duration_ms: 0.301025
   type: 'test'
   ...
 # Subtest: local HTTP server exposes browser and image routes
 ok 49 - local HTTP server exposes browser and image routes
   ---
-  duration_ms: 2.179026
+  duration_ms: 3.16851
   type: 'test'
   ...
 # Subtest: control center exposes browser URL and refresh input
 ok 50 - control center exposes browser URL and refresh input
   ---
-  duration_ms: 0.169336
+  duration_ms: 0.272011
   type: 'test'
   ...
 # Subtest: Kindle browser page busts cached dashboard images
 ok 51 - Kindle browser page busts cached dashboard images
   ---
-  duration_ms: 1.2189
+  duration_ms: 1.161496
   type: 'test'
   ...
 # Subtest: model cache bars use the displayed cache percentage
 ok 52 - model cache bars use the displayed cache percentage
   ---
-  duration_ms: 1.267241
+  duration_ms: 1.194887
   type: 'test'
   ...
 # Subtest: cache bar ratios are clamped to the visible range
 ok 53 - cache bar ratios are clamped to the visible range
   ---
-  duration_ms: 0.205414
+  duration_ms: 0.197338
   type: 'test'
   ...
 # Subtest: model cards preserve the three DeepSeek token categories
 ok 54 - model cards preserve the three DeepSeek token categories
   ---
-  duration_ms: 2.068218
+  duration_ms: 2.639279
   type: 'test'
   ...
 # Subtest: dashboard startup tolerates null source payloads
 ok 55 - dashboard startup tolerates null source payloads
   ---
-  duration_ms: 3.308088
+  duration_ms: 2.942298
   type: 'test'
   ...
 # Subtest: refresh attempts every source and reports partial failures
-not ok 56 - refresh attempts every source and reports partial failures
+ok 56 - refresh attempts every source and reports partial failures
   ---
-  duration_ms: 3.623999
+  duration_ms: 1.068886
   type: 'test'
-  location: '/home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/long-running-sync-v095.test.mjs:12:1'
-  failureType: 'testCodeFailure'
-  error: |-
-    The input did not match the regular expression /failed\.push\(format!\("\{source_name\}：\{error\}"\)\)/. Input:
-    
-    'use serde::{Deserialize, Serialize};\n' +
-      'use serde_json::Value;\n' +
-      'use std::{\n' +
-      '    fs,\n' +
-      '    io::{Read, Write},\n' +
-      '    net::{TcpListener, TcpStream, UdpSocket},\n' +
-      '    path::{Path, PathBuf},\n' +
-      '    process::Command,\n' +
-      '    sync::{\n' +
-      '        atomic::{AtomicU64, Ordering},\n' +
-      '        Arc, Condvar, Mutex, RwLock,\n' +
-      '    },\n' +
-      '    thread,\n' +
-      '    time::Duration,\n' +
-      '};\n' +
-      '\n' +
-      '#[cfg(target_os = "windows")]\n' +
-      'use std::os::windows::process::CommandExt;\n' +
-      'use tauri::{\n' +
-      '    webview::PageLoadEvent, AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow,\n' +
-      '    WebviewWindowBuilder,\n' +
-      '};\n' +
-      '\n' +
-      'mod desktop;\n' +
-      'mod update_helper;\n' +
-      '\n' +
-      'pub fn run_update_helper_from_args() -> bool {\n' +
-      '    update_helper::run_from_args()\n' +
-      '}\n' +
-      'use desktop::{\n' +
-      '    copy_browser_url, get_desktop_state, open_browser_url, set_autostart_enabled,\n' +
-      '    set_collection_paused, set_tray_source_status, set_tray_update_status,\n' +
-      '};\n' +
-      '\n' +
-      'const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");\n' +
-      'const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";\n' +
-      'const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";\n' +
-      'const VOLCENGINE_URL: &str =\n' +
-      '    "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";\n' +
-      'const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";\n' +
-      'const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";\n' +
-      'const DEFAULT_REFRESH_MINUTES: u64 = 10;\n' +
-      'const MIN_REFRESH_MINUTES: u64 = 1;\n' +
-      'const MAX_REFRESH_MINUTES: u64 = 24 * 60;\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'const REFRESH_BATCH_TIMEOUT_MS: u64 = 30_000;\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'const CREATION_STALE_MS: u64 = 30_000;\n' +
-      '\n' +
-      '#[derive(Debug, Clone, Default, Serialize, Deserialize)]\n' +
-      '#[serde(rename_all = "camelCase")]\n' +
-      'struct MetricsState {\n' +
-      '    codex: Option<Value>,\n' +
-      '    deepseek: Option<Value>,\n' +
-      '    volcengine: Option<Value>,\n' +
-      '    received_at: Option<String>,\n' +
-      '}\n' +
-      '\n' +
-      '#[derive(Debug, Clone, Serialize)]\n' +
-      '#[serde(rename_all = "camelCase")]\n' +
-      'struct RuntimeSettings {\n' +
-      '    refresh_minutes: u64,\n' +
-      '    image_url: String,\n' +
-      '    browser_url: String,\n' +
-      '}\n' +
-      '\n' +
-      '#[derive(Debug, Clone, Serialize)]\n' +
-      '#[serde(rename_all = "camelCase")]\n' +
-      'struct RefreshSummary {\n' +
-      '    requested_at: Option<String>,\n' +
-      '    expected: Vec<String>,\n' +
-      '    refreshed: Vec<String>,\n' +
-      '    started: Vec<String>,\n' +
-      '    pending: Vec<String>,\n' +
-      '    failed: Vec<String>,\n' +
-      '    already_running: bool,\n' +
-      '}\n' +
-      '\n' +
-      '#[derive(Debug, Clone, Deserialize)]\n' +
-      '#[serde(rename_all = "camelCase")]\n' +
-      'struct UpdateRequest {\n' +
-      '    version: String,\n' +
-      '    download_url: String,\n' +
-      '    checksum_url: String,\n' +
-      '    asset_name: String,\n' +
-      '}\n' +
-      '\n' +
-      '#[derive(Debug, Clone, Serialize)]\n' +
-      '#[serde(rename_all = "camelCase")]\n' +
-      'struct UpdateInstallResult {\n' +
-      '    version: String,\n' +
-      '    restarting: bool,\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      '#[derive(Debug, Clone)]\n' +
-      'struct RefreshBatch {\n' +
-      '    requested_at: String,\n' +
-      '    started_ms: u64,\n' +
-      '    pending: Vec<String>,\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      '#[derive(Default)]\n' +
-      'struct SourceRuntime {\n' +
-      '    active_refresh: Mutex<Option<RefreshBatch>>,\n' +
-      '    codex_creating_since: AtomicU64,\n' +
-      '    deepseek_creating_since: AtomicU64,\n' +
-      '    volcengine_creating_since: AtomicU64,\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'impl SourceRuntime {\n' +
-      '    fn creation_flag(&self, source: &str) -> Result<&AtomicU64, String> {\n' +
-      '        match source {\n' +
-      '            "codex" => Ok(&self.codex_creating_since),\n' +
-      '            "deepseek" => Ok(&self.deepseek_creating_since),\n' +
-      '            "volcengine" => Ok(&self.volcengine_creating_since),\n' +
-      '            _ => Err("未知数据源".into()),\n' +
-      '        }\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      "struct CreationClaim<'a> {\n" +
-      "    flag: &'a AtomicU64,\n" +
-      '    token: u64,\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      "impl Drop for CreationClaim<'_> {\n" +
-      '    fn drop(&mut self) {\n' +
-      '        let _ = self\n' +
-      '            .flag\n' +
-      '            .compare_exchange(self.token, 0, Ordering::AcqRel, Ordering::Acquire);\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      "fn claim_creation(flag: &AtomicU64, now_ms: u64) -> Option<CreationClaim<'_>> {\n" +
-      '    let token = now_ms.max(1);\n' +
-      '    loop {\n' +
-      '        let previous = flag.load(Ordering::Acquire);\n' +
-      '        if previous != 0 && token.saturating_sub(previous) < CREATION_STALE_MS {\n' +
-      '            return None;\n' +
-      '        }\n' +
-      '        if flag\n' +
-      '            .compare_exchange(previous, token, Ordering::AcqRel, Ordering::Acquire)\n' +
-      '            .is_ok()\n' +
-      '        {\n' +
-      '            return Some(CreationClaim { flag, token });\n' +
-      '        }\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      'fn unix_millis() -> u64 {\n' +
-      '    use std::time::{SystemTime, UNIX_EPOCH};\n' +
-      '    SystemTime::now()\n' +
-      '        .duration_since(UNIX_EPOCH)\n' +
-      '        .unwrap_or_default()\n' +
-      '        .as_millis()\n' +
-      '        .min(u128::from(u64::MAX)) as u64\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'fn source_display_name(source: &str) -> String {\n' +
-      '    match source {\n' +
-      '        "codex" => "Codex".into(),\n' +
-      '        "deepseek" => "DeepSeek".into(),\n' +
-      '        "volcengine" => "火山方舟".into(),\n' +
-      '        _ => source.into(),\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'fn begin_refresh_batch(runtime: &SourceRuntime, now_ms: u64) -> Result<Option<String>, String> {\n' +
-      '    let mut active = runtime\n' +
-      '        .active_refresh\n' +
-      '        .lock()\n' +
-      '        .map_err(|_| "后台刷新批次锁已损坏".to_string())?;\n' +
-      '    if let Some(batch) = active.as_ref() {\n' +
-      '        if now_ms.saturating_sub(batch.started_ms) < REFRESH_BATCH_TIMEOUT_MS {\n' +
-      '            return Ok(None);\n' +
-      '        }\n' +
-      '    }\n' +
-      '\n' +
-      '    let requested_at = now_ms.to_string();\n' +
-      '    *active = Some(RefreshBatch {\n' +
-      '        requested_at: requested_at.clone(),\n' +
-      '        started_ms: now_ms,\n' +
-      '        pending: ["codex", "deepseek", "volcengine"]\n' +
-      '            .into_iter()\n' +
-      '            .map(str::to_string)\n' +
-      '            .collect(),\n' +
-      '    });\n' +
-      '    Ok(Some(requested_at))\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'fn active_refresh_snapshot(\n' +
-      '    runtime: &SourceRuntime,\n' +
-      ') -> Result<Option<(String, Vec<String>)>, String> {\n' +
-      '    runtime\n' +
-      '        .active_refresh\n' +
-      '        .lock()\n' +
-      '        .map(|active| {\n' +
-      '            active\n' +
-      '                .as_ref()\n' +
-      '                .map(|batch| (batch.requested_at.clone(), batch.pending.clone()))\n' +
-      '        })\n' +
-      '        .map_err(|_| "后台刷新批次锁已损坏".to_string())\n' +
-      '}\n' +
-      '\n' +
-      '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      'fn finish_refresh_source(\n' +
-      '    runtime: &SourceRuntime,\n' +
-      '    requested_at: &str,\n' +
-      '    source: &str,\n' +
-      ') -> Result<(), String> {\n' +
-      '    let mut active = runtime\n' +
-      '        .active_refresh\n' +
-      '        .lock()\n' +
-      '        .map_err(|_| "后台刷新批次锁已损坏".to_string())?;\n' +
-      '    let Some(batch) = active.as_mut() else {\n' +
-      '        return Ok(());\n' +
-      '    };\n' +
-      '    if batch.requested_at != requested_at {\n' +
-      '        return Ok(());\n' +
-      '    }\n' +
-      '    batch.pending.retain(|value| value != source);\n' +
-      '    if batch.pending.is_empty() {\n' +
-      '        *active = None;\n' +
-      '    }\n' +
-      '    Ok(())\n' +
-      '}\n' +
-      '\n' +
-      'struct RefreshClock {\n' +
-      '    minutes: Mutex<u64>,\n' +
-      '    changed: Condvar,\n' +
-      '}\n' +
-      '\n' +
-      'impl RefreshClock {\n' +
-      '    fn new(minutes: u64) -> Self {\n' +
-      '        Self {\n' +
-      '            minutes: Mutex::new(minutes),\n' +
-      '            changed: Condvar::new(),\n' +
-      '        }\n' +
-      '    }\n' +
-      '\n' +
-      '    fn get(&self) -> u64 {\n' +
-      '        self.minutes\n' +
-      '            .lock()\n' +
-      '            .map(|minutes| *minutes)\n' +
-      '            .unwrap_or(DEFAULT_REFRESH_MINUTES)\n' +
-      '    }\n' +
-      '\n' +
-      '    fn set(&self, minutes: u64) -> Result<u64, String> {\n' +
-      '        if !(MIN_REFRESH_MINUTES..=MAX_REFRESH_MINUTES).contains(&minutes) {\n' +
-      '            return Err(format!(\n' +
-      '                "刷新间隔必须在 {MIN_REFRESH_MINUTES}–{MAX_REFRESH_MINUTES} 分钟之间"\n' +
-      '            ));\n' +
-      '        }\n' +
-      '        let mut current = self.minutes.lock().map_err(|_| "刷新计时器锁已损坏")?;\n' +
-      '        *current = minutes;\n' +
-      '        self.changed.notify_all();\n' +
-      '        Ok(minutes)\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      'struct AppState {\n' +
-      '    metrics: Mutex<MetricsState>,\n' +
-      '    png: Arc<RwLock<Vec<u8>>>,\n' +
-      '    refresh: Arc<RefreshClock>,\n' +
-      '    port: u16,\n' +
-      '    #[cfg(not(any(target_os = "android", target_os = "ios")))]\n' +
-      '    source_runtime: SourceRuntime,\n' +
-      '    #[cfg(any(target_os = "android", target_os = "ios"))]\n' +
-      '    mobile_refresh: Mutex<bool>,\n' +
-      '}\n' +
-      '\n' +
-      'fn timestamp() -> String {\n' +
-      '    use std::time::{SystemTime, UNIX_EPOCH};\n' +
-      '    SystemTime::now()\n' +
-      '        .duration_since(UNIX_EPOCH)\n' +
-      '        .unwrap_or_default()\n' +
-      '        .as_secs()\n' +
-      '        .to_string()\n' +
-      '}\n' +
-      '\n' +
-      'fn profile_dimensions(profile: &str) -> Option<(u32, u32)> {\n' +
-      '    match profile {\n' +
-      '        "kindle-600x800" => Some((600, 800)),\n' +
-      '        "kindle-758x1024" => Some((758, 1024)),\n' +
-      '        "kindle-1072x1448" => Some((1072, 1448)),\n' +
-      '        "kindle-1236x1648" => Some((1236, 1648)),\n' +
-      '        "kindle-1264x1680" => Some((1264, 1680)),\n' +
-      '        "kindle-1860x2480" => Some((1860, 2480)),\n' +
-      '        _ => None,\n' +
-      '    }\n' +
-      '}\n' +
-      '\n' +
-      'fn validate_png(bytes: &[u8], profile: &str) -> Result<(), String> {\n' +
-      '    const SIG: &[u8; 8] = b"\\x89PNG\\r\\n\\x1a\\n";\n' +
-      '    if bytes.len() < 33 || &bytes[..8] != SIG {\n' +
-      '        return Err("不是有效的 PNG 文件".into());\n' +
-      '    }\n' +
-      '\n' +
-      '    let (expected_width, expected_height) = profile_dimensions(profile)\n' +
-      '        .ok_or_else(|| format!("不支持的 Kindle 屏幕配置：{profile}"))?;\n' +
-      '    let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());\n' +
-      '    let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());\n' +
-      '    let bit_depth = bytes[24];\n' +
-      '    let color_type = bytes[25];\n' +
-      '\n' +
-      '    if (width, height) != (expected_width, expected_height) {\n' +
-      '        return Err(format!(\n' +
-      '            "配置 {profile} 需要 {expected_width}×{expected_height}；实际为 {width}×{height}"\n' +
-      '        ));\n' +
-      '    }\n' +
-      '    if (bit_depth, color_type) != (8, 0) {\n' +
-      '        return Err(format!(\n' +
-      '            "Kindle 图片必须是 8 位灰度 PNG；实际 bitDepth={bit_depth}, colorType={color_type}"\n' +
-      '        ));\n' +
-      '    }\n' +
-      '    Ok(())\n' +
-      '}\n' +
-      '\n' +
-      '#[tauri::command]\n' +
-      'fn set_dashboard_png(\n' +
-      '    bytes: Vec<u8>,\n' +
-      '    profile: String,\n' +
-      "    state: State<'_, AppState>,\n" +
-      ') -> Result<(), String> {\n' +
-      '    validate_png(&bytes, &profile)?;\n' +
-      '    *state.png.write().map_err(|_| "PNG 锁已损坏")? = bytes;\n' +
-      '    Ok(())\n' +
-      '}\n' +
-      '\n' +
-      '#[tauri::command]\n' +
-      "fn get_status(state: State<'_, AppState>) -> MetricsState {\n" +
-      '    state.metrics.lock().map(|s| s.clone()).unwrap_or_default()\n' +
-      '}\n' +
-      '\n' +
-      'fn local_ip() -> String {\n' +
-      '    UdpSocket::bind("0.0.0.0:0")\n' +
-      '        .and_then(|socket| {\n' +
-      '            socket.connect("8.8.8.8:80")?;\n' +
-      '            socket.local_addr()\n' +
-      '        })\n' +
-      '        .map(|add'... 34476 more characters
-    
-  code: 'ERR_ASSERTION'
-  name: 'AssertionError'
-  expected:
-  actual: |-
-    use serde::{Deserialize, Serialize};
-    use serde_json::Value;
-    use std::{
-        fs,
-        io::{Read, Write},
-        net::{TcpListener, TcpStream, UdpSocket},
-        path::{Path, PathBuf},
-        process::Command,
-        sync::{
-            atomic::{AtomicU64, Ordering},
-            Arc, Condvar, Mutex, RwLock,
-        },
-        thread,
-        time::Duration,
-    };
-    
-    #[cfg(target_os = "windows")]
-    use std::os::windows::process::CommandExt;
-    use tauri::{
-        webview::PageLoadEvent, AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow,
-        WebviewWindowBuilder,
-    };
-    
-    mod desktop;
-    mod update_helper;
-    
-    pub fn run_update_helper_from_args() -> bool {
-        update_helper::run_from_args()
-    }
-    use desktop::{
-        copy_browser_url, get_desktop_state, open_browser_url, set_autostart_enabled,
-        set_collection_paused, set_tray_source_status, set_tray_update_status,
-    };
-    
-    const EXTRACTOR_SCRIPT: &str = include_str!("../../web/extractor.js");
-    const CODEX_URL: &str = "https://chatgpt.com/codex/cloud/settings/analytics";
-    const DEEPSEEK_URL: &str = "https://platform.deepseek.com/usage";
-    const VOLCENGINE_URL: &str =
-        "https://console.volcengine.com/ark/region:cn-beijing/subscription/agent-plan-enterprise";
-    const SIGNAL_PREFIX: &str = "__TOKEN_ON_KINDLE__:";
-    const ACTION_PREFIX: &str = "__TOKEN_ON_KINDLE_ACTION__:";
-    const DEFAULT_REFRESH_MINUTES: u64 = 10;
-    const MIN_REFRESH_MINUTES: u64 = 1;
-    const MAX_REFRESH_MINUTES: u64 = 24 * 60;
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    const REFRESH_BATCH_TIMEOUT_MS: u64 = 30_000;
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    const CREATION_STALE_MS: u64 = 30_000;
-    
-    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MetricsState {
-        codex: Option<Value>,
-        deepseek: Option<Value>,
-        volcengine: Option<Value>,
-        received_at: Option<String>,
-    }
-    
-    #[derive(Debug, Clone, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RuntimeSettings {
-        refresh_minutes: u64,
-        image_url: String,
-        browser_url: String,
-    }
-    
-    #[derive(Debug, Clone, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RefreshSummary {
-        requested_at: Option<String>,
-        expected: Vec<String>,
-        refreshed: Vec<String>,
-        started: Vec<String>,
-        pending: Vec<String>,
-        failed: Vec<String>,
-        already_running: bool,
-    }
-    
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct UpdateRequest {
-        version: String,
-        download_url: String,
-        checksum_url: String,
-        asset_name: String,
-    }
-    
-    #[derive(Debug, Clone, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct UpdateInstallResult {
-        version: String,
-        restarting: bool,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    #[derive(Debug, Clone)]
-    struct RefreshBatch {
-        requested_at: String,
-        started_ms: u64,
-        pending: Vec<String>,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    #[derive(Default)]
-    struct SourceRuntime {
-        active_refresh: Mutex<Option<RefreshBatch>>,
-        codex_creating_since: AtomicU64,
-        deepseek_creating_since: AtomicU64,
-        volcengine_creating_since: AtomicU64,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    impl SourceRuntime {
-        fn creation_flag(&self, source: &str) -> Result<&AtomicU64, String> {
-            match source {
-                "codex" => Ok(&self.codex_creating_since),
-                "deepseek" => Ok(&self.deepseek_creating_since),
-                "volcengine" => Ok(&self.volcengine_creating_since),
-                _ => Err("未知数据源".into()),
-            }
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    struct CreationClaim<'a> {
-        flag: &'a AtomicU64,
-        token: u64,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    impl Drop for CreationClaim<'_> {
-        fn drop(&mut self) {
-            let _ = self
-                .flag
-                .compare_exchange(self.token, 0, Ordering::AcqRel, Ordering::Acquire);
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn claim_creation(flag: &AtomicU64, now_ms: u64) -> Option<CreationClaim<'_>> {
-        let token = now_ms.max(1);
-        loop {
-            let previous = flag.load(Ordering::Acquire);
-            if previous != 0 && token.saturating_sub(previous) < CREATION_STALE_MS {
-                return None;
-            }
-            if flag
-                .compare_exchange(previous, token, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok()
-            {
-                return Some(CreationClaim { flag, token });
-            }
-        }
-    }
-    
-    fn unix_millis() -> u64 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-            .min(u128::from(u64::MAX)) as u64
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn source_display_name(source: &str) -> String {
-        match source {
-            "codex" => "Codex".into(),
-            "deepseek" => "DeepSeek".into(),
-            "volcengine" => "火山方舟".into(),
-            _ => source.into(),
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn begin_refresh_batch(runtime: &SourceRuntime, now_ms: u64) -> Result<Option<String>, String> {
-        let mut active = runtime
-            .active_refresh
-            .lock()
-            .map_err(|_| "后台刷新批次锁已损坏".to_string())?;
-        if let Some(batch) = active.as_ref() {
-            if now_ms.saturating_sub(batch.started_ms) < REFRESH_BATCH_TIMEOUT_MS {
-                return Ok(None);
-            }
-        }
-    
-        let requested_at = now_ms.to_string();
-        *active = Some(RefreshBatch {
-            requested_at: requested_at.clone(),
-            started_ms: now_ms,
-            pending: ["codex", "deepseek", "volcengine"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        });
-        Ok(Some(requested_at))
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn active_refresh_snapshot(
-        runtime: &SourceRuntime,
-    ) -> Result<Option<(String, Vec<String>)>, String> {
-        runtime
-            .active_refresh
-            .lock()
-            .map(|active| {
-                active
-                    .as_ref()
-                    .map(|batch| (batch.requested_at.clone(), batch.pending.clone()))
-            })
-            .map_err(|_| "后台刷新批次锁已损坏".to_string())
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn finish_refresh_source(
-        runtime: &SourceRuntime,
-        requested_at: &str,
-        source: &str,
-    ) -> Result<(), String> {
-        let mut active = runtime
-            .active_refresh
-            .lock()
-            .map_err(|_| "后台刷新批次锁已损坏".to_string())?;
-        let Some(batch) = active.as_mut() else {
-            return Ok(());
-        };
-        if batch.requested_at != requested_at {
-            return Ok(());
-        }
-        batch.pending.retain(|value| value != source);
-        if batch.pending.is_empty() {
-            *active = None;
-        }
-        Ok(())
-    }
-    
-    struct RefreshClock {
-        minutes: Mutex<u64>,
-        changed: Condvar,
-    }
-    
-    impl RefreshClock {
-        fn new(minutes: u64) -> Self {
-            Self {
-                minutes: Mutex::new(minutes),
-                changed: Condvar::new(),
-            }
-        }
-    
-        fn get(&self) -> u64 {
-            self.minutes
-                .lock()
-                .map(|minutes| *minutes)
-                .unwrap_or(DEFAULT_REFRESH_MINUTES)
-        }
-    
-        fn set(&self, minutes: u64) -> Result<u64, String> {
-            if !(MIN_REFRESH_MINUTES..=MAX_REFRESH_MINUTES).contains(&minutes) {
-                return Err(format!(
-                    "刷新间隔必须在 {MIN_REFRESH_MINUTES}–{MAX_REFRESH_MINUTES} 分钟之间"
-                ));
-            }
-            let mut current = self.minutes.lock().map_err(|_| "刷新计时器锁已损坏")?;
-            *current = minutes;
-            self.changed.notify_all();
-            Ok(minutes)
-        }
-    }
-    
-    struct AppState {
-        metrics: Mutex<MetricsState>,
-        png: Arc<RwLock<Vec<u8>>>,
-        refresh: Arc<RefreshClock>,
-        port: u16,
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        source_runtime: SourceRuntime,
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        mobile_refresh: Mutex<bool>,
-    }
-    
-    fn timestamp() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-            .to_string()
-    }
-    
-    fn profile_dimensions(profile: &str) -> Option<(u32, u32)> {
-        match profile {
-            "kindle-600x800" => Some((600, 800)),
-            "kindle-758x1024" => Some((758, 1024)),
-            "kindle-1072x1448" => Some((1072, 1448)),
-            "kindle-1236x1648" => Some((1236, 1648)),
-            "kindle-1264x1680" => Some((1264, 1680)),
-            "kindle-1860x2480" => Some((1860, 2480)),
-            _ => None,
-        }
-    }
-    
-    fn validate_png(bytes: &[u8], profile: &str) -> Result<(), String> {
-        const SIG: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
-        if bytes.len() < 33 || &bytes[..8] != SIG {
-            return Err("不是有效的 PNG 文件".into());
-        }
-    
-        let (expected_width, expected_height) = profile_dimensions(profile)
-            .ok_or_else(|| format!("不支持的 Kindle 屏幕配置：{profile}"))?;
-        let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
-        let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
-        let bit_depth = bytes[24];
-        let color_type = bytes[25];
-    
-        if (width, height) != (expected_width, expected_height) {
-            return Err(format!(
-                "配置 {profile} 需要 {expected_width}×{expected_height}；实际为 {width}×{height}"
-            ));
-        }
-        if (bit_depth, color_type) != (8, 0) {
-            return Err(format!(
-                "Kindle 图片必须是 8 位灰度 PNG；实际 bitDepth={bit_depth}, colorType={color_type}"
-            ));
-        }
-        Ok(())
-    }
-    
-    #[tauri::command]
-    fn set_dashboard_png(
-        bytes: Vec<u8>,
-        profile: String,
-        state: State<'_, AppState>,
-    ) -> Result<(), String> {
-        validate_png(&bytes, &profile)?;
-        *state.png.write().map_err(|_| "PNG 锁已损坏")? = bytes;
-        Ok(())
-    }
-    
-    #[tauri::command]
-    fn get_status(state: State<'_, AppState>) -> MetricsState {
-        state.metrics.lock().map(|s| s.clone()).unwrap_or_default()
-    }
-    
-    fn local_ip() -> String {
-        UdpSocket::bind("0.0.0.0:0")
-            .and_then(|socket| {
-                socket.connect("8.8.8.8:80")?;
-                socket.local_addr()
-            })
-            .map(|address| address.ip().to_string())
-            .unwrap_or_else(|_| "127.0.0.1".into())
-    }
-    
-    fn runtime_settings(state: &AppState) -> RuntimeSettings {
-        let host = local_ip();
-        RuntimeSettings {
-            refresh_minutes: state.refresh.get(),
-            image_url: format!("http://{host}:{}/dashboard.png", state.port),
-            browser_url: format!("http://{host}:{}/", state.port),
-        }
-    }
-    
-    #[tauri::command]
-    fn get_runtime_settings(state: State<'_, AppState>) -> RuntimeSettings {
-        runtime_settings(&state)
-    }
-    
-    #[tauri::command]
-    fn get_dashboard_url(state: State<'_, AppState>) -> String {
-        runtime_settings(&state).image_url
-    }
-    
-    #[tauri::command]
-    fn get_browser_url(state: State<'_, AppState>) -> String {
-        runtime_settings(&state).browser_url
-    }
-    
-    #[tauri::command]
-    fn set_refresh_interval(
-        minutes: u64,
-        state: State<'_, AppState>,
-    ) -> Result<RuntimeSettings, String> {
-        state.refresh.set(minutes)?;
-        Ok(runtime_settings(&state))
-    }
-    
-    fn source_url(source: &str) -> Result<(&'static str, &'static str, &'static str), String> {
-        match source {
-            "codex" => Ok(("codex-login", "Codex Analytics", CODEX_URL)),
-            "deepseek" => Ok(("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL)),
-            "volcengine" => Ok((
-                "volcengine-login",
-                "火山方舟 Agent Plan 企业版",
-                VOLCENGINE_URL,
-            )),
-            _ => Err("未知数据源".into()),
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    #[derive(Clone)]
-    struct InitialSync {
-        refresh_minutes: u64,
-        requested_at: Option<String>,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    enum SourceWindowState {
-        Existing(WebviewWindow),
-        Created(WebviewWindow),
-        Starting,
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn source_host_matches(source: &str, host: &str) -> bool {
-        match source {
-            "codex" => host == "chatgpt.com",
-            "deepseek" => host.ends_with("deepseek.com"),
-            "volcengine" => host.ends_with("volcengine.com"),
-            _ => false,
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn sync_hook_script(refresh_minutes: u64, requested_at: Option<&str>) -> String {
-        let requested_at = requested_at
-            .map(|value| format!(", syncRequestedAt: \"{value}\""))
-            .unwrap_or_default();
-        format!(
-            r#"(() => {{
-              const options = {{ automatic: true, refreshMinutes: {refresh_minutes}{requested_at} }};
-              const deadline = Date.now() + 15000;
-              const run = () => {{
-                if (typeof window.__TOKEN_ON_KINDLE_SYNC__ === 'function') {{
-                  Promise.resolve(window.__TOKEN_ON_KINDLE_SYNC__(options)).catch(error => console.error('[Token on Kindle] background sync failed', error));
-                  return;
-                }}
-                if (Date.now() < deadline) setTimeout(run, 250);
-              }};
-              run();
-            }})()"#
-        )
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn create_source_window(
-        app: &AppHandle,
-        source: &str,
-        initial_sync: InitialSync,
-    ) -> tauri::Result<()> {
-        let (label, title, url) = match source {
-            "codex" => ("codex-login", "Codex Analytics", CODEX_URL),
-            "deepseek" => ("deepseek-login", "DeepSeek Platform", DEEPSEEK_URL),
-            "volcengine" => (
-                "volcengine-login",
-                "火山方舟 Agent Plan 企业版",
-                VOLCENGINE_URL,
-            ),
-            _ => unreachable!("only static sources are created"),
-        };
-        let parsed = url.parse().expect("static source URL must be valid");
-        let pending_sync = Arc::new(Mutex::new(Some(initial_sync)));
-        let pending_sync_on_load = Arc::clone(&pending_sync);
-        let source_on_load = source.to_string();
-    
-        WebviewWindowBuilder::new(app, label, WebviewUrl::External(parsed))
-            .title(title)
-            .inner_size(1180.0, 820.0)
-            .visible(false)
-            .initialization_script(EXTRACTOR_SCRIPT)
-            .on_page_load(move |window, payload| {
-                if !matches!(payload.event(), PageLoadEvent::Finished) {
-                    return;
-                }
-                let host = payload.url().host_str().unwrap_or_default();
-                if !source_host_matches(&source_on_load, host) {
-                    return;
-                }
-                let context = pending_sync_on_load
-                    .lock()
-                    .ok()
-                    .and_then(|mut value| value.take());
-                let Some(context) = context else {
-                    return;
-                };
-                let script = sync_hook_script(context.refresh_minutes, context.requested_at.as_deref());
-                if let Err(error) = window.eval(&script) {
-                    eprintln!("initial source sync injection failed for {source_on_load}: {error}");
-                }
-            })
-            .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
-            .build()?;
-        Ok(())
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn ensure_source_window(
-        app: &AppHandle,
-        source: &str,
-        initial_sync: InitialSync,
-    ) -> Result<SourceWindowState, String> {
-        let (label, _, _) = source_url(source)?;
-        if let Some(window) = app.get_webview_window(label) {
-            return Ok(SourceWindowState::Existing(window));
-        }
-    
-        let state = app.state::<AppState>();
-        let flag = state.source_runtime.creation_flag(source)?;
-        let Some(_claim) = claim_creation(flag, unix_millis()) else {
-            return Ok(SourceWindowState::Starting);
-        };
-        if let Some(window) = app.get_webview_window(label) {
-            return Ok(SourceWindowState::Existing(window));
-        }
-    
-        if let Err(error) = create_source_window(app, source, initial_sync) {
-            if let Some(window) = app.get_webview_window(label) {
-                return Ok(SourceWindowState::Existing(window));
-            }
-            return Err(format!("无法创建 {label} 数据源窗口：{error}"));
-        }
-        let window = app
-            .get_webview_window(label)
-            .ok_or_else(|| format!("{label} 数据源窗口创建后不可用"))?;
-        let _ = window.hide();
-        Ok(SourceWindowState::Created(window))
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn wait_for_source_window(app: &AppHandle, source: &str) -> Result<WebviewWindow, String> {
-        let (label, _, _) = source_url(source)?;
-        for _ in 0..150 {
-            if let Some(window) = app.get_webview_window(label) {
-                return Ok(window);
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        Err(format!("{label} 数据源窗口启动超时"))
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
-        let refresh_minutes = app.state::<AppState>().refresh.get();
-        let initial_sync = InitialSync {
-            refresh_minutes,
-            requested_at: None,
-        };
-        let window = match ensure_source_window(app, source, initial_sync)? {
-            SourceWindowState::Existing(window) | SourceWindowState::Created(window) => window,
-            SourceWindowState::Starting => wait_for_source_window(app, source)?,
-        };
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-        Ok(())
-    }
-    
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
-        let (_, _, url) = source_url(source)?;
-        let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
-        window
-            .navigate(url.parse().map_err(|error| format!("URL 错误: {error}"))?)
-            .map_err(|error| error.to_string())
-    }
-    
-    #[tauri::command]
-    async fn open_source(app: AppHandle, source: String) -> Result<(), String> {
-        open_source_impl(&app, &source)
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn background_refresh_window(
-        window: &WebviewWindow,
-        reload_page: bool,
-        refresh_minutes: u64,
-        sync_requested_at: &str,
-    ) -> Result<(), String> {
-        let sync_script = sync_hook_script(refresh_minutes, Some(sync_requested_at));
-        if window.is_focused().unwrap_or(false) {
-            return window.eval(&sync_script).map_err(|error| error.to_string());
-        }
-    
-        let _ = window.hide();
-        if reload_page {
-            let reload_script = format!(
-                "sessionStorage.setItem('__token_on_kindle_refresh_minutes', '{refresh_minutes}');sessionStorage.setItem('__token_on_kindle_sync_requested_at', '{sync_requested_at}');window.blur();location.reload()"
-            );
-            window
-                .eval(&reload_script)
-                .map_err(|error| error.to_string())?;
-        } else {
-            window
-                .eval(&sync_script)
-                .map_err(|error| error.to_string())?;
-        }
-        let _ = window.hide();
-        Ok(())
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn report_source_refresh_failure(
-        app: &AppHandle,
-        requested_at: &str,
-        source: &str,
-        source_name: &str,
-        error: String,
-    ) {
-        let state = app.state::<AppState>();
-        if let Err(batch_error) = finish_refresh_source(&state.source_runtime, requested_at, source) {
-            eprintln!("unable to close failed refresh source {source}: {batch_error}");
-        }
-        if let Err(emit_error) = app.emit_to(
-            "main",
-            "source-refresh-failed",
-            serde_json::json!({
-                "requestedAt": requested_at,
-                "source": source,
-                "name": source_name,
-                "error": error,
-            }),
-        ) {
-            eprintln!("unable to report failed refresh source {source}: {emit_error}");
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn refresh_source_worker(
-        app: AppHandle,
-        source: &'static str,
-        source_name: &'static str,
-        reload_page: bool,
-        refresh_minutes: u64,
-        sync_requested_at: String,
-    ) {
-        let initial_sync = InitialSync {
-            refresh_minutes,
-            requested_at: Some(sync_requested_at.clone()),
-        };
-        let result = match ensure_source_window(&app, source, initial_sync) {
-            Ok(SourceWindowState::Existing(window)) => {
-                background_refresh_window(&window, reload_page, refresh_minutes, &sync_requested_at)
-            }
-            Ok(SourceWindowState::Created(window)) => {
-                let _ = window.hide();
-                Ok(())
-            }
-            Ok(SourceWindowState::Starting) => {
-                wait_for_source_window(&app, source).and_then(|window| {
-                    let _ = window.hide();
-                    background_refresh_window(&window, false, refresh_minutes, &sync_requested_at)
-                })
-            }
-            Err(error) => Err(error),
-        };
-    
-        if let Err(error) = result {
-            report_source_refresh_failure(&app, &sync_requested_at, source, source_name, error);
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn spawn_source_refresh_worker(
-        app: &AppHandle,
-        source: &'static str,
-        source_name: &'static str,
-        reload_page: bool,
-        refresh_minutes: u64,
-        sync_requested_at: &str,
-    ) -> Result<(), String> {
-        let app = app.clone();
-        let requested_at = sync_requested_at.to_string();
-        thread::Builder::new()
-            .name(format!("token-refresh-{source}"))
-            .spawn(move || {
-                refresh_source_worker(
-                    app,
-                    source,
-                    source_name,
-                    reload_page,
-                    refresh_minutes,
-                    requested_at,
-                );
-            })
-            .map(|_| ())
-            .map_err(|error| format!("{source_name} 后台线程启动失败：{error}"))
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn start_source_warmup(app: AppHandle) {
-        for (source, delay_ms) in [
-            ("codex", 700_u64),
-            ("deepseek", 1100_u64),
-            ("volcengine", 1500_u64),
-        ] {
-            let app = app.clone();
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(delay_ms));
-                let refresh_minutes = app.state::<AppState>().refresh.get();
-                let initial_sync = InitialSync {
-                    refresh_minutes,
-                    requested_at: None,
-                };
-                if let Err(error) = ensure_source_window(&app, source, initial_sync) {
-                    eprintln!("source window warm-up failed for {source}: {error}");
-                }
-            });
-        }
-    }
-    
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
-        let state = app.state::<AppState>();
-        let now_ms = unix_millis();
-        let Some(sync_requested_at) = begin_refresh_batch(&state.source_runtime, now_ms)? else {
-            let snapshot = active_refresh_snapshot(&state.source_runtime)?;
-            let (requested_at, pending_ids) = snapshot
-                .map(|(requested_at, pending)| (Some(requested_at), pending))
-                .unwrap_or((None, Vec::new()));
-            return Ok(RefreshSummary {
-                requested_at,
-                expected: pending_ids.clone(),
-                refreshed: Vec::new(),
-                started: Vec::new(),
-                pending: pending_ids
-                    .iter()
-                    .map(|source| source_display_name(source))
-                    .collect(),
-                failed: Vec::new(),
-                already_running: true,
-            });
-        };
-    
-        let refresh_minutes = state.refresh.get();
-        let mut expected = Vec::new();
-        let mut pending = Vec::new();
-        let mut failed = Vec::new();
-    
-        for (source, source_name, reload_page) in [
-            ("codex", "Codex", true),
-            ("deepseek", "DeepSeek", true),
-            ("volcengine", "火山方舟", false),
-        ] {
-            match spawn_source_refresh_worker(
-                app,
-                source,
-                source_name,
-                reload_page,
-                refresh_minutes,
-                &sync_requested_at,
-            ) {
-                Ok(()) => {
-                    expected.push(source.to_string());
-                    pending.push(source_name.to_string());
-                }
-                Err(error) => {
-                    let _ = finish_refresh_source(&state.source_runtime, &sync_requested_at, source);
-                    failed.push(error);
-                }
-            }
-        }
-    
-        Ok(RefreshSummary {
-            requested_at: Some(sync_requested_at),
-            expected,
-            refreshed: Vec::new(),
-            started: Vec::new(),
-            pending,
-            failed,
-            already_running: false,
-        })
-    }
-    
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
-        let state = app.state::<AppState>();
-        *state
-            .mobile_refresh
-            .lock()
-            .map_err(|_| "移动端刷新状态锁已损坏")? = true;
-        let window = app.get_webview_window("main").ok_or("主窗口不存在")?;
-        window
-            .navigate(
-                CODEX_URL
-                    .parse()
-                    .map_err(|error| format!("URL 错误: {error}"))?,
-            )
-            .map_err(|error| error.to_string())?;
-        Ok(RefreshSummary {
-            requested_at: Some(unix_millis().to_string()),
-            expected: vec!["codex".into(), "deepseek".into(), "volcengine".into()],
-            refreshed: vec!["移动端采集".into()],
-            started: Vec::new(),
-            pending: Vec::new(),
-            failed: Vec::new(),
-            already_running: false,
-        })
-    }
-    
-    #[tauri::command]
-    async fn refresh_sources(app: AppHandle) -> Result<RefreshSummary, String> {
-        reload_sources(&app)
-    }
-    
-    fn validate_update_request(request: &UpdateRequest) -> Result<(), String> {
-        const RELEASE_PREFIX: &str = "https://github.com/jnjnnjzch/Token-on-Kindle/releases/download/";
-        if !request.download_url.starts_with(RELEASE_PREFIX)
-            || !request.checksum_url.starts_with(RELEASE_PREFIX)
-        {
-            return Err("更新地址不是本项目的 GitHub Release".into());
-        }
-        if !request.asset_name.starts_with("Token-on-Kindle-")
-            || !request.asset_name.ends_with("-windows-x64.zip")
-            || request.asset_name.contains('/')
-            || request.asset_name.contains('\\')
-        {
-            return Err("Windows 更新包名称不合法".into());
-        }
-        if !request.checksum_url.ends_with("-SHA256SUMS.txt") {
-            return Err("Release 缺少统一 SHA-256 校验文件".into());
-        }
-        let version = request
-            .version
-            .strip_prefix('v')
-            .unwrap_or(&request.version);
-        if version.split('.').count() < 3
-            || !version
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || ".-_".contains(character))
-        {
-            return Err("版本号格式不合法".into());
-        }
-        Ok(())
-    }
-    
-    #[cfg(target_os = "windows")]
-    fn find_update_executable(root: &Path) -> Option<PathBuf> {
-        for entry in fs::read_dir(root).ok()? {
-            let entry = entry.ok()?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(found) = find_update_executable(&path) {
-                    return Some(found);
-                }
-            } else if path
-                .file_name()
-                .and_then(|value| value.to_str())
-                .is_some_and(|name| name.eq_ignore_ascii_case("Token-on-Kindle.exe"))
-            {
-                return Some(path);
-            }
-        }
-        None
-    }
-    
-    #[cfg(target_os = "windows")]
-    #[tauri::command]
-    async fn install_update(
-        app: AppHandle,
-        request: UpdateRequest,
-    ) -> Result<UpdateInstallResult, String> {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        validate_update_request(&request)?;
-    
-        let current_exe =
-            std::env::current_exe().map_err(|error| format!("无法定位当前程序：{error}"))?;
-        let temp_root = std::env::temp_dir().join(format!(
-            "token-on-kindle-update-{}-{}",
-            request.version.trim_start_matches('v'),
-            timestamp()
-        ));
-        let extract_dir = temp_root.join("payload");
-        let zip_path = temp_root.join(&request.asset_name);
-        let checksum_path = temp_root.join("SHA256SUMS.txt");
-        fs::create_dir_all(&extract_dir).map_err(|error| format!("无法创建更新目录：{error}"))?;
-    
-        let download_script = temp_root.join("download-and-verify.ps1");
-        fs::write(
-            &download_script,
-            r#"param(
-      [string]$DownloadUrl,
-      [string]$ChecksumUrl,
-      [string]$AssetName,
-      [string]$ZipPath,
-      [string]$ChecksumPath,
-      [string]$ExtractDir
-    )
-    $ErrorActionPreference = 'Stop'
-    $ProgressPreference = 'SilentlyContinue'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -UseBasicParsing -Uri $DownloadUrl -OutFile $ZipPath
-    Invoke-WebRequest -UseBasicParsing -Uri $ChecksumUrl -OutFile $ChecksumPath
-    $line = Get-Content -LiteralPath $ChecksumPath | Where-Object { $_ -match ([regex]::Escape($AssetName) + '$') } | Select-Object -First 1
-    if (-not $line) { throw "checksum entry not found for $AssetName" }
-    $expected = ($line -split '\s+')[0].ToLowerInvariant()
-    $actual = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($expected -ne $actual) { throw "SHA-256 mismatch: expected $expected, got $actual" }
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force
-    "#,
-        )
-        .map_err(|error| format!("无法写入下载脚本：{error}"))?;
-    
-        let output = Command::new("powershell.exe")
-            .arg("-NoLogo")
-            .arg("-NoProfile")
-            .arg("-NonInteractive")
-            .arg("-ExecutionPolicy")
-            .arg("Bypass")
-            .arg("-File")
-            .arg(&download_script)
-            .arg("-DownloadUrl")
-            .arg(&request.download_url)
-            .arg("-ChecksumUrl")
-            .arg(&request.checksum_url)
-            .arg("-AssetName")
-            .arg(&request.asset_name)
-            .arg("-ZipPath")
-            .arg(&zip_path)
-            .arg("-ChecksumPath")
-            .arg(&checksum_path)
-            .arg("-ExtractDir")
-            .arg(&extract_dir)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|error| format!("无法启动 PowerShell 下载器：{error}"))?;
-    
-        if !output.status.success() {
-            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if detail.is_empty() {
-                "更新包下载或校验失败".into()
-            } else {
-                format!("更新包下载或校验失败：{detail}")
-            });
-        }
-    
-        let source_exe = find_update_executable(&extract_dir)
-            .ok_or_else(|| "更新包中没有找到 Token-on-Kindle.exe".to_string())?;
-        update_helper::prepare_and_spawn(&current_exe, &source_exe, &temp_root)?;
-    
-        let app_for_exit = app.clone();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(900));
-            app_for_exit.exit(0);
-        });
-    
-        Ok(UpdateInstallResult {
-            version: request.version,
-            restarting: true,
-        })
-    }
-    
-    #[cfg(not(target_os = "windows"))]
-    #[tauri::command]
-    async fn install_update(
-        _app: AppHandle,
-        _request: UpdateRequest,
-    ) -> Result<UpdateInstallResult, String> {
-        Err("当前自动安装仅支持 Windows 便携版；请从 Release 下载对应平台版本".into())
-    }
-    
-    fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
-        thread::spawn(move || loop {
-            let guard = match refresh.minutes.lock() {
-                Ok(guard) => guard,
-                Err(_) => return,
-            };
-            let wait = Duration::from_secs((*guard).saturating_mul(60));
-            let result = refresh.changed.wait_timeout(guard, wait);
-            let Ok((_guard, timeout)) = result else {
-                return;
-            };
-            if timeout.timed_out() && !desktop::is_paused(&app) {
-                match reload_sources(&app) {
-                    Ok(summary) if !summary.failed.is_empty() => {
-                        eprintln!(
-                            "scheduled refresh completed with failures: {}",
-                            summary.failed.join(" | ")
-                        );
-                    }
-                    Err(error) => eprintln!("scheduled refresh failed: {error}"),
-                    _ => {}
-                }
-            }
-        });
-    }
-    
-    fn decode_base64_url(input: &str) -> Result<Vec<u8>, String> {
-        let mut out = Vec::with_capacity(input.len() * 3 / 4);
-        let mut buffer: u32 = 0;
-        let mut bits = 0u8;
-        for byte in input.bytes() {
-            let value = match byte {
-                b'A'..=b'Z' => byte - b'A',
-                b'a'..=b'z' => byte - b'a' + 26,
-                b'0'..=b'9' => byte - b'0' + 52,
-                b'-' => 62,
-                b'_' => 63,
-                _ => return Err("无效的 base64url".into()),
-            } as u32;
-            buffer = (buffer << 6) | value;
-            bits += 6;
-            if bits >= 8 {
-                bits -= 8;
-                out.push(((buffer >> bits) & 0xff) as u8);
-            }
-        }
-        Ok(out)
-    }
-    
-    fn dashboard_app_url() -> &'static str {
-        #[cfg(any(target_os = "windows", target_os = "android"))]
-        {
-            "http://tauri.localhost/index.html"
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "android")))]
-        {
-            "tauri://localhost/index.html"
-        }
-    }
-    
-    fn return_to_dashboard(window: &WebviewWindow) {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            let state = window.app_handle().state::<AppState>();
-            if let Ok(mut active) = state.mobile_refresh.lock() {
-                *active = false;
-            }
-            if let Ok(url) = dashboard_app_url().parse() {
-                let _ = window.navigate(url);
-            }
-        }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            let _ = window.hide();
-        }
-    }
-    
-    fn store_metrics_signal(app: &AppHandle, source: &str, encoded: &str) -> Result<(), String> {
-        let decoded = decode_base64_url(encoded)?;
-        let payload = serde_json::from_slice::<Value>(&decoded)
-            .map_err(|error| format!("采集数据 JSON 无效：{error}"))?;
-        let sync_requested_at = payload
-            .get("syncRequestedAt")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let state = app.state::<AppState>();
-        let snapshot = {
-            let mut metrics = state
-                .metrics
-                .lock()
-                .map_err(|_| "采集状态锁已损坏".to_string())?;
-            match source {
-                "codex" => metrics.codex = Some(payload),
-                "deepseek" => metrics.deepseek = Some(payload),
-                "volcengine" => metrics.volcengine = Some(payload),
-                _ => return Err(format!("未知采集来源：{source}")),
-            }
-            metrics.received_at = Some(timestamp());
-            metrics.clone()
-        };
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        if let Some(requested_at) = sync_requested_at.as_deref() {
-            if let Err(error) = finish_refresh_source(&state.source_runtime, requested_at, source) {
-                eprintln!("unable to record refresh receipt for {source}: {error}");
-            }
-        }
-        app.emit_to("main", "metrics-updated", snapshot)
-            .map_err(|error| format!("无法通知主窗口：{error}"))?;
-        Ok(())
-    }
-    
-    fn handle_title_signal(window: &WebviewWindow, title: &str) {
-        if let Some(action) = title.strip_prefix(ACTION_PREFIX) {
-            if action == "dashboard" {
-                return_to_dashboard(window);
-            }
-            return;
-        }
-        let Some(rest) = title.strip_prefix(SIGNAL_PREFIX) else {
-            return;
-        };
-        let mut parts = rest.splitn(2, ':');
-        let source = parts.next().unwrap_or_default();
-        let encoded = parts.next().unwrap_or_default();
-        let app = window.app_handle();
-        if let Err(error) = store_metrics_signal(&app, source, encoded) {
-            eprintln!("title bridge rejected {source} payload: {error}");
-            return;
-        }
-    
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            let state = app.state::<AppState>();
-            let active = state
-                .mobile_refresh
-                .lock()
-                .map(|value| *value)
-                .unwrap_or(false);
-            if active {
-                match source {
-                    "codex" => {
-                        if let Ok(url) = DEEPSEEK_URL.parse() {
-                            let _ = window.navigate(url);
-                        }
-                    }
-                    "deepseek" => {
-                        if let Ok(url) = VOLCENGINE_URL.parse() {
-                            let _ = window.navigate(url);
-                        }
-                    }
-                    "volcengine" => return_to_dashboard(window),
-                    _ => {}
-                }
-            }
-        }
-    }
-    
-    fn write_response(
-        stream: &mut TcpStream,
-        status: &str,
-        content_type: &str,
-        body: &[u8],
-        cache_control: &str,
-    ) {
-        let header = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: {cache_control}\r\nPragma: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(body);
-    }
-    
-    fn browser_page(refresh_minutes: u64) -> String {
-        let refresh_seconds = refresh_minutes.saturating_mul(60);
-        let nonce = timestamp();
-        format!(
-            r#"<!doctype html>
-    <html lang="zh-CN">
-    <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-    <meta http-equiv="refresh" content="{refresh_seconds}">
-    <title>Token on Kindle</title>
-    <style>
-    html,body{{margin:0;padding:0;background:#e7e7e7;color:#111}}
-    body{{font-family:Arial,"Microsoft YaHei",sans-serif}}
-    main{{width:100%;margin:0 auto}}
-    a{{display:block;color:inherit;text-decoration:none}}
-    img{{display:block;width:100%;height:auto;margin:0 auto;border:0;background:#fff}}
-    .notice{{padding:18px;text-align:center;font-size:18px;line-height:1.5}}
-    </style>
-    </head>
-    <body>
-    <main>
-    <a href="/" aria-label="点击立即刷新">
-    <img src="/dashboard.png?v={nonce}" alt="Codex、DeepSeek 与火山方舟用量看板">
-    </a>
-    <noscript><p class="notice">页面每 {refresh_minutes} 分钟自动重新载入；点击图片可立即刷新。</p></noscript>
-    </main>
-    </body>
-    </html>"#
-        )
-    }
-    
-    fn handle_client(mut stream: TcpStream, png: Arc<RwLock<Vec<u8>>>, refresh: Arc<RefreshClock>) {
-        let mut request = [0u8; 2048];
-        let count = stream.read(&mut request).unwrap_or(0);
-        let first_line = String::from_utf8_lossy(&request[..count]);
-        let path = first_line
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .unwrap_or("/")
-            .split('?')
-            .next()
-            .unwrap_or("/");
-    
-        match path {
-            "/dashboard.png" => {
-                let bytes = png.read().map(|value| value.clone()).unwrap_or_default();
-                if bytes.is_empty() {
-                    write_response(
-                        &mut stream,
-                        "503 Service Unavailable",
-                        "text/plain; charset=utf-8",
-                        b"dashboard has not been rendered yet",
-                        "no-store",
-                    );
-                } else {
-                    write_response(
-                        &mut stream,
-                        "200 OK",
-                        "image/png",
-                        &bytes,
-                        "no-store, no-cache, must-revalidate, max-age=0",
-                    );
-                }
-            }
-            "/" | "/index.html" => {
-                let body = browser_page(refresh.get());
-                write_response(
-                    &mut stream,
-                    "200 OK",
-                    "text/html; charset=utf-8",
-                    body.as_bytes(),
-                    "no-store, no-cache, must-revalidate, max-age=0",
-                );
-            }
-            "/healthz" => {
-                let ready = png.read().map(|value| !value.is_empty()).unwrap_or(false);
-                let body = serde_json::json!({
-                    "ok": true,
-                    "dashboardReady": ready,
-                    "refreshMinutes": refresh.get()
-                })
-                .to_string();
-                write_response(
-                    &mut stream,
-                    "200 OK",
-                    "application/json; charset=utf-8",
-                    body.as_bytes(),
-                    "no-store",
-                );
-            }
-            _ => write_response(
-                &mut stream,
-                "404 Not Found",
-                "text/plain; charset=utf-8",
-                b"not found",
-                "no-store",
-            ),
-        }
-    }
-    
-    fn bind_http_server() -> Result<(TcpListener, u16), String> {
-        for port in 8765..=8785 {
-            if let Ok(listener) = TcpListener::bind(("0.0.0.0", port)) {
-                return Ok((listener, port));
-            }
-        }
-        Err("8765–8785 端口均被占用".into())
-    }
-    
-    fn start_http_server(listener: TcpListener, png: Arc<RwLock<Vec<u8>>>, refresh: Arc<RefreshClock>) {
-        thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                let png = Arc::clone(&png);
-                let refresh = Arc::clone(&refresh);
-                thread::spawn(move || handle_client(stream, png, refresh));
-            }
-        });
-    }
-    
-    #[cfg_attr(
-        any(target_os = "android", target_os = "ios"),
-        tauri::mobile_entry_point
-    )]
-    pub fn run() {
-        let (listener, port) = bind_http_server().expect("failed to bind local HTTP server");
-        let png = Arc::new(RwLock::new(Vec::new()));
-        let refresh = Arc::new(RefreshClock::new(DEFAULT_REFRESH_MINUTES));
-        start_http_server(listener, Arc::clone(&png), Arc::clone(&refresh));
-    
-        tauri::Builder::default()
-            .manage(desktop::DesktopState::default())
-            .manage(AppState {
-                metrics: Mutex::new(MetricsState::default()),
-                png,
-                refresh: Arc::clone(&refresh),
-                port,
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                source_runtime: SourceRuntime::default(),
-                #[cfg(any(target_os = "android", target_os = "ios"))]
-                mobile_refresh: Mutex::new(false),
-            })
-            .invoke_handler(tauri::generate_handler![
-                set_dashboard_png,
-                get_status,
-                get_runtime_settings,
-                get_dashboard_url,
-                get_browser_url,
-                set_refresh_interval,
-                open_source,
-                refresh_sources,
-                install_update,
-                get_desktop_state,
-                set_collection_paused,
-                set_autostart_enabled,
-                set_tray_source_status,
-                set_tray_update_status,
-                copy_browser_url,
-                open_browser_url
-            ])
-            .setup(move |app| {
-                desktop::init_plugins(app)?;
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("Token on Kindle")
-                    .inner_size(1180.0, 820.0)
-                    .min_inner_size(820.0, 620.0)
-                    .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
-                    .build()?;
-    
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                start_source_warmup(app.handle().clone());
-    
-                start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));
-                if let Err(error) = desktop::build_tray(app) {
-                    eprintln!("system tray unavailable: {error}");
-                }
-                Ok(())
-            })
-            .on_window_event(|window, event| desktop::handle_window_event(window, event))
-            .run(tauri::generate_context!())
-            .expect("error while running Token on Kindle");
-    }
-    
-    #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
-    mod source_runtime_tests {
-        use super::*;
-    
-        #[test]
-        fn refresh_batch_is_single_flight_until_receipts_or_timeout() {
-            let runtime = SourceRuntime::default();
-            let requested_at = begin_refresh_batch(&runtime, 100_000)
-                .expect("batch lock should work")
-                .expect("first batch should start");
-            assert!(
-                begin_refresh_batch(&runtime, 100_000 + REFRESH_BATCH_TIMEOUT_MS - 1)
-                    .expect("batch lock should work")
-                    .is_none()
-            );
-    
-            finish_refresh_source(&runtime, &requested_at, "codex").unwrap();
-            finish_refresh_source(&runtime, &requested_at, "deepseek").unwrap();
-            assert!(active_refresh_snapshot(&runtime).unwrap().is_some());
-            finish_refresh_source(&runtime, &requested_at, "volcengine").unwrap();
-            assert!(active_refresh_snapshot(&runtime).unwrap().is_none());
-            assert!(begin_refresh_batch(&runtime, 100_001).unwrap().is_some());
-        }
-    
-        #[test]
-        fn stale_source_creation_claim_can_recover_without_old_drop_clearing_it() {
-            let flag = AtomicU64::new(0);
-            let first = claim_creation(&flag, 100_000).expect("first creator should win");
-            assert!(claim_creation(&flag, 100_000 + CREATION_STALE_MS - 1).is_none());
-            let second = claim_creation(&flag, 100_000 + CREATION_STALE_MS)
-                .expect("stale creation should be recoverable");
-            drop(first);
-            assert_ne!(flag.load(Ordering::Acquire), 0);
-            drop(second);
-            assert_eq!(flag.load(Ordering::Acquire), 0);
-        }
-    
-        #[test]
-        fn source_page_load_matching_rejects_cross_origin_redirects() {
-            assert!(source_host_matches("codex", "chatgpt.com"));
-            assert!(source_host_matches("deepseek", "platform.deepseek.com"));
-            assert!(source_host_matches("volcengine", "console.volcengine.com"));
-            assert!(!source_host_matches("codex", "auth.openai.com"));
-            assert!(!source_host_matches("volcengine", "example.com"));
-        }
-    }
-    
-  operator: 'match'
-  stack: |-
-    TestContext.<anonymous> (file:///home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/long-running-sync-v095.test.mjs:16:10)
-    Test.runInAsyncScope (node:async_hooks:214:14)
-    Test.run (node:internal/test_runner/test:1047:25)
-    Test.start (node:internal/test_runner/test:944:17)
-    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
   ...
 # Subtest: Volcengine refreshes the current SPA controls and expires stale chart fallback
 ok 57 - Volcengine refreshes the current SPA controls and expires stale chart fallback
   ---
-  duration_ms: 1.566911
+  duration_ms: 0.226783
   type: 'test'
   ...
 # Subtest: partial refresh failures remain visible in the control center
 ok 58 - partial refresh failures remain visible in the control center
   ---
-  duration_ms: 0.224109
+  duration_ms: 0.151549
   type: 'test'
   ...
 # Subtest: unused Volcengine full-response cache is absent from source and release extractor
 ok 59 - unused Volcengine full-response cache is absent from source and release extractor
   ---
-  duration_ms: 0.414246
+  duration_ms: 0.329257
   type: 'test'
   ...
 # Subtest: hidden Volcengine WebView can still trigger the matched SPA refresh control
 ok 60 - hidden Volcengine WebView can still trigger the matched SPA refresh control
   ---
-  duration_ms: 0.163796
+  duration_ms: 0.149205
   type: 'test'
   ...
 # Subtest: main window starts first and provider warm-up is detached and non-fatal
 ok 61 - main window starts first and provider warm-up is detached and non-fatal
   ---
-  duration_ms: 1.498663
+  duration_ms: 1.311953
   type: 'test'
   ...
 # Subtest: manual and scheduled refresh recreate or follow up every provider window
 not ok 62 - manual and scheduled refresh recreate or follow up every provider window
   ---
-  duration_ms: 1.404727
+  duration_ms: 1.347627
   type: 'test'
   location: '/home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/main-window-startup-v096.test.mjs:18:1'
   failureType: 'testCodeFailure'
   error: |-
-    The input did not match the regular expression /ensure_source_window\(app, source, initial_sync\)/. Input:
+    The input did not match the regular expression /SourceWindowState::Created/. Input:
     
     'fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {\n' +
       '    let state = app.state::<AppState>();\n' +
@@ -2389,7 +516,7 @@ not ok 62 - manual and scheduled refresh recreate or follow up every provider wi
     
   operator: 'match'
   stack: |-
-    TestContext.<anonymous> (file:///home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/main-window-startup-v096.test.mjs:20:10)
+    TestContext.<anonymous> (file:///home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/main-window-startup-v096.test.mjs:25:10)
     Test.runInAsyncScope (node:async_hooks:214:14)
     Test.run (node:internal/test_runner/test:1047:25)
     Test.processPendingSubtests (node:internal/test_runner/test:744:18)
@@ -2400,369 +527,369 @@ not ok 62 - manual and scheduled refresh recreate or follow up every provider wi
 # Subtest: dashboard PNG uses the v0.6.2 direct encoder path
 ok 63 - dashboard PNG uses the v0.6.2 direct encoder path
   ---
-  duration_ms: 0.276657
+  duration_ms: 0.200023
   type: 'test'
   ...
 # Subtest: Kindle DeepSeek card keeps cumulative and monthly amount statistics
 ok 64 - Kindle DeepSeek card keeps cumulative and monthly amount statistics
   ---
-  duration_ms: 2.387105
+  duration_ms: 1.588401
   type: 'test'
   ...
 # Subtest: selected-range totals are not substituted for account monthly totals
 ok 65 - selected-range totals are not substituted for account monthly totals
   ---
-  duration_ms: 0.332482
+  duration_ms: 0.291932
   type: 'test'
   ...
 # Subtest: Kindle profile ids and dimensions are unique and portrait-oriented
 ok 66 - Kindle profile ids and dimensions are unique and portrait-oriented
   ---
-  duration_ms: 1.323987
+  duration_ms: 1.219995
   type: 'test'
   ...
 # Subtest: unknown profiles fall back to classic 600x800
 ok 67 - unknown profiles fall back to classic 600x800
   ---
-  duration_ms: 1.048972
+  duration_ms: 0.971649
   type: 'test'
   ...
 # Subtest: the PNG encoder supports every native Kindle profile
 ok 68 - the PNG encoder supports every native Kindle profile
   ---
-  duration_ms: 413.985515
+  duration_ms: 399.446312
   type: 'test'
   ...
 # Subtest: PNG generation uses the proven v0.6.2 direct encoder with single-flight publishing
 ok 69 - PNG generation uses the proven v0.6.2 direct encoder with single-flight publishing
   ---
-  duration_ms: 3.302928
+  duration_ms: 2.847905
   type: 'test'
   ...
 # Subtest: manual refresh is single-flight and always releases the UI
 ok 70 - manual refresh is single-flight and always releases the UI
   ---
-  duration_ms: 0.357198
+  duration_ms: 0.308767
   type: 'test'
   ...
 # Subtest: tray updates are serialized and deduplicated before opening Kindle pages
 ok 71 - tray updates are serialized and deduplicated before opening Kindle pages
   ---
-  duration_ms: 0.227756
+  duration_ms: 0.269137
   type: 'test'
   ...
 # Subtest: release extractor removes the hidden WebView close-on-reload race
 ok 72 - release extractor removes the hidden WebView close-on-reload race
   ---
-  duration_ms: 0.325508
+  duration_ms: 0.282066
   type: 'test'
   ...
 # Subtest: source signals stay compact enough for the title bridge
 ok 73 - source signals stay compact enough for the title bridge
   ---
-  duration_ms: 0.280555
+  duration_ms: 0.20555
   type: 'test'
   ...
 # Subtest: source hide button uses the native dashboard action instead of closing the WebView
 ok 74 - source hide button uses the native dashboard action instead of closing the WebView
   ---
-  duration_ms: 0.243065
+  duration_ms: 0.19883
   type: 'test'
   ...
 # Subtest: source toolbar no longer claims native receipt before the main window updates
 ok 75 - source toolbar no longer claims native receipt before the main window updates
   ---
-  duration_ms: 0.309329
+  duration_ms: 0.296548
   type: 'test'
   ...
 # Subtest: refresh interval is persisted and sent to the native scheduler
 ok 76 - refresh interval is persisted and sent to the native scheduler
   ---
-  duration_ms: 1.168536
+  duration_ms: 1.020723
   type: 'test'
   ...
 # Subtest: repository keeps one reusable workflow and cleans legacy branches and runs
 ok 77 - repository keeps one reusable workflow and cleans legacy branches and runs
   ---
-  duration_ms: 1.852906
+  duration_ms: 1.280686
   type: 'test'
   ...
 # Subtest: Codex weekly and 5h quotas are selected for one shared two-column card
 ok 78 - Codex weekly and 5h quotas are selected for one shared two-column card
   ---
-  duration_ms: 1.647693
+  duration_ms: 2.015838
   type: 'test'
   ...
 # Subtest: Codex falls back to a single available quota without inventing a second column
 ok 79 - Codex falls back to a single available quota without inventing a second column
   ---
-  duration_ms: 1.158377
+  duration_ms: 1.524865
   type: 'test'
   ...
 # Subtest: DeepSeek summary follows the currently selected page range
 ok 80 - DeepSeek summary follows the currently selected page range
   ---
-  duration_ms: 0.281636
+  duration_ms: 0.343079
   type: 'test'
   ...
 # Subtest: unlock background spans the full image and covers the complete firmware text area
 ok 81 - unlock background spans the full image and covers the complete firmware text area
   ---
-  duration_ms: 0.217547
+  duration_ms: 0.270358
   type: 'test'
   ...
 # Subtest: Kindle output contains no refresh or connection-status copy
 ok 82 - Kindle output contains no refresh or connection-status copy
   ---
-  duration_ms: 9.000327
+  duration_ms: 9.03611
   type: 'test'
   ...
 # Subtest: scheduler is woken when refresh interval changes
 ok 83 - scheduler is woken when refresh interval changes
   ---
-  duration_ms: 1.20865
+  duration_ms: 0.798768
   type: 'test'
   ...
 # Subtest: all seven non-empty source combinations receive bounded Kindle layout boxes
 ok 84 - all seven non-empty source combinations receive bounded Kindle layout boxes
   ---
-  duration_ms: 3.028696
+  duration_ms: 2.493118
   type: 'test'
   ...
 # Subtest: DeepSeek always receives enough height for Flash and Pro details
 ok 85 - DeepSeek always receives enough height for Flash and Pro details
   ---
-  duration_ms: 0.376965
+  duration_ms: 0.385012
   type: 'test'
   ...
 # Subtest: DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate
 ok 86 - DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate
   ---
-  duration_ms: 0.499044
+  duration_ms: 0.455949
   type: 'test'
   ...
 # Subtest: Codex keeps a full-width single quota when no 5h limit exists
 ok 87 - Codex keeps a full-width single quota when no 5h limit exists
   ---
-  duration_ms: 0.645568
+  duration_ms: 0.4699
   type: 'test'
   ...
 # Subtest: DeepSeek money statistics retain cumulative and monthly values
 ok 88 - DeepSeek money statistics retain cumulative and monthly values
   ---
-  duration_ms: 0.298148
+  duration_ms: 0.236777
   type: 'test'
   ...
 # Subtest: all three source controls expose actionable connection states
 ok 89 - all three source controls expose actionable connection states
   ---
-  duration_ms: 1.248927
+  duration_ms: 0.8401
   type: 'test'
   ...
 # Subtest: desktop source windows use the proven v0.8.2 title bridge
 ok 90 - desktop source windows use the proven v0.8.2 title bridge
   ---
-  duration_ms: 2.809426
+  duration_ms: 3.553532
   type: 'test'
   ...
 # Subtest: generated extractor never closes native source windows during refresh
 ok 91 - generated extractor never closes native source windows during refresh
   ---
-  duration_ms: 0.520784
+  duration_ms: 0.598074
   type: 'test'
   ...
 # Subtest: compact payloads remain enabled on the title transport
 ok 92 - compact payloads remain enabled on the title transport
   ---
-  duration_ms: 0.201246
+  duration_ms: 0.252852
   type: 'test'
   ...
 # Subtest: unlock area is a full-width gray firmware-safe band
 ok 93 - unlock area is a full-width gray firmware-safe band
   ---
-  duration_ms: 2.042561
+  duration_ms: 2.85089
   type: 'test'
   ...
 # Subtest: Windows updater uses an independent executable helper instead of a silent post-exit PowerShell script
 ok 94 - Windows updater uses an independent executable helper instead of a silent post-exit PowerShell script
   ---
-  duration_ms: 1.21931
+  duration_ms: 0.947242
   type: 'test'
   ...
 # Subtest: cross-version updates run the helper from the downloaded new binary
 ok 95 - cross-version updates run the helper from the downloaded new binary
   ---
-  duration_ms: 0.209502
+  duration_ms: 0.216538
   type: 'test'
   ...
 # Subtest: updater preflights the target directory and performs recoverable replacement
 ok 96 - updater preflights the target directory and performs recoverable replacement
   ---
-  duration_ms: 0.158957
+  duration_ms: 0.146381
   type: 'test'
   ...
 # Subtest: tray readiness is pushed after native tray creation and re-read by the UI
 ok 97 - tray readiness is pushed after native tray creation and re-read by the UI
   ---
-  duration_ms: 0.216595
+  duration_ms: 0.196056
   type: 'test'
   ...
 # Subtest: the UI confirms a completed update only after the restarted binary reports the requested version
 ok 98 - the UI confirms a completed update only after the restarted binary reports the requested version
   ---
-  duration_ms: 0.224831
+  duration_ms: 0.241515
   type: 'test'
   ...
 # Subtest: Windows portable updater downloads, verifies, replaces, and restarts
 ok 99 - Windows portable updater downloads, verifies, replaces, and restarts
   ---
-  duration_ms: 2.055946
+  duration_ms: 2.563915
   type: 'test'
   ...
 # Subtest: reads every model series directly from the rendered ECharts option
 ok 100 - reads every model series directly from the rendered ECharts option
   ---
-  duration_ms: 2.724877
+  duration_ms: 4.4781
   type: 'test'
   ...
 # Subtest: supports ECharts dataset rows when series data is dataset-driven
 ok 101 - supports ECharts dataset rows when series data is dataset-driven
   ---
-  duration_ms: 0.542686
+  duration_ms: 0.773449
   type: 'test'
   ...
 # Subtest: keeps zero-valued legend models without inventing token points
 ok 102 - keeps zero-valued legend models without inventing token points
   ---
-  duration_ms: 8.24863
+  duration_ms: 11.752566
   type: 'test'
   ...
 # Subtest: walks the real React DOM fiber shape to call ReactECharts.getEchartsInstance()
 ok 103 - walks the real React DOM fiber shape to call ReactECharts.getEchartsInstance()
   ---
-  duration_ms: 0.473696
+  duration_ms: 0.749223
   type: 'test'
   ...
 # Subtest: uses the official global ECharts instance when the page exposes it
 ok 104 - uses the official global ECharts instance when the page exposes it
   ---
-  duration_ms: 0.320811
+  duration_ms: 0.269047
   type: 'test'
   ...
 # Subtest: Volcengine overlay reads ReactECharts state without intercepting page requests
 ok 105 - Volcengine overlay reads ReactECharts state without intercepting page requests
   ---
-  duration_ms: 10.371672
+  duration_ms: 12.802022
   type: 'test'
   ...
 # Subtest: diagnostic JSON preserves model names, tokens and direct chart access details
 ok 106 - diagnostic JSON preserves model names, tokens and direct chart access details
   ---
-  duration_ms: 0.818451
+  duration_ms: 0.876094
   type: 'test'
   ...
 # Subtest: legacy Volcengine response parser remains compatible with exported API fixtures
 ok 107 - legacy Volcengine response parser remains compatible with exported API fixtures
   ---
-  duration_ms: 3.706885
+  duration_ms: 5.565949
   type: 'test'
   ...
 # Subtest: legacy response parser still selects the newest payload instead of summing refreshes
 ok 108 - legacy response parser still selects the newest payload instead of summing refreshes
   ---
-  duration_ms: 0.308477
+  duration_ms: 0.51632
   type: 'test'
   ...
 # Subtest: model text layout keeps every model at every card height
 ok 109 - model text layout keeps every model at every card height
   ---
-  duration_ms: 0.485569
+  duration_ms: 0.705757
   type: 'test'
   ...
 # Subtest: three-source compact Volcengine card shows six models as two columns by three rows
 ok 110 - three-source compact Volcengine card shows six models as two columns by three rows
   ---
-  duration_ms: 0.447056
+  duration_ms: 0.584654
   type: 'test'
   ...
 # Subtest: renderer keeps only models with latest token usage and sorts by today tokens
 ok 111 - renderer keeps only models with latest token usage and sorts by today tokens
   ---
-  duration_ms: 0.359933
+  duration_ms: 0.492124
   type: 'test'
   ...
 # Subtest: packaged extractor disables legacy Volcengine interception before reading ReactECharts
 ok 112 - packaged extractor disables legacy Volcengine interception before reading ReactECharts
   ---
-  duration_ms: 1.590455
+  duration_ms: 0.556001
   type: 'test'
   ...
 # Subtest: Volcengine opens on the Agent Plan Enterprise route
 ok 113 - Volcengine opens on the Agent Plan Enterprise route
   ---
-  duration_ms: 1.334917
+  duration_ms: 1.293355
   type: 'test'
   ...
 # Subtest: desktop refresh preserves the selected Volcengine SPA view
 ok 114 - desktop refresh preserves the selected Volcengine SPA view
   ---
-  duration_ms: 0.323556
+  duration_ms: 0.362238
   type: 'test'
   ...
 # Subtest: the extractor still exposes an in-page sync hook
 ok 115 - the extractor still exposes an in-page sync hook
   ---
-  duration_ms: 0.268572
+  duration_ms: 0.313594
   type: 'test'
   ...
 # Subtest: today-only Volcengine display excludes monthly-only and zero-latest models
 ok 116 - today-only Volcengine display excludes monthly-only and zero-latest models
   ---
-  duration_ms: 2.020672
+  duration_ms: 2.157642
   type: 'test'
   ...
 # Subtest: Kindle 7 three-source layout gives Volcengine more room and readable type
 ok 117 - Kindle 7 three-source layout gives Volcengine more room and readable type
   ---
-  duration_ms: 1.48064
+  duration_ms: 2.546189
   type: 'test'
   ...
 # Subtest: generated renderer labels and displays latest token values
 ok 118 - generated renderer labels and displays latest token values
   ---
-  duration_ms: 6.09045
+  duration_ms: 9.640994
   type: 'test'
   ...
 # Subtest: background refresh reloads stateless sources but preserves the Volcengine view
 ok 119 - background refresh reloads stateless sources but preserves the Volcengine view
   ---
-  duration_ms: 1.034946
+  duration_ms: 1.677906
   type: 'test'
   ...
 # Subtest: hiding a source window does not summon the dashboard
 ok 120 - hiding a source window does not summon the dashboard
   ---
-  duration_ms: 0.334856
+  duration_ms: 0.397571
   type: 'test'
   ...
 # Subtest: release extractor contains no close-on-reload handler
 ok 121 - release extractor contains no close-on-reload handler
   ---
-  duration_ms: 0.158757
+  duration_ms: 0.237099
   type: 'test'
   ...
 # Subtest: repository keeps one reusable build-to-release workflow
 ok 122 - repository keeps one reusable build-to-release workflow
   ---
-  duration_ms: 6.491092
+  duration_ms: 5.328795
   type: 'test'
   ...
 1..122
 # tests 122
 # suites 0
-# pass 119
-# fail 3
+# pass 121
+# fail 1
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 1180.176243
+# duration_ms 1186.135961
