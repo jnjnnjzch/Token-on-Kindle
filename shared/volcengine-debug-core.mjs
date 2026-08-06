@@ -1,5 +1,6 @@
 const SECRET_KEY = /(authorization|cookie|secret|password|passwd|credential|session|signature|security|access.?key|secret.?key|csrf|bearer|access.?token|refresh.?token|id.?token|user.?token|session.?token|security.?token)/i;
 const SECRET_QUERY_KEY = /^(authorization|cookie|token|access_token|refresh_token|id_token|secret|signature|session|csrf)$/i;
+const IDENTIFIER_KEY = /(?:seat|account|user|tenant|owner).?id|email|phone/i;
 const INTERESTING_KEY = /(action|afp|quota|used|usage|reset|token|input|output|cache|request|model|seat|plan|limit|remain|consume|amount|stat|detail)/i;
 const AFP_KEY = /(afp|five.?hour|weekly|monthly|quota|reset.?time|remaining|used)/i;
 const MODEL_KEY = /(model|token|input|output|cache|request|series|dataset|prompt|completion)/i;
@@ -33,6 +34,7 @@ export function sanitizeVolcengineUrl(rawUrl, baseUrl = 'https://console.volceng
 
 function sanitizeScalar(key, value) {
   if (SECRET_KEY.test(key)) return '[redacted]';
+  if (IDENTIFIER_KEY.test(key)) return '[identifier]';
   if (typeof value === 'number' || typeof value === 'boolean' || value == null) return value;
   const text = cleanText(value);
   if (!text) return '';
