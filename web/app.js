@@ -101,7 +101,7 @@ function hasUsefulData(source, payload) {
 }
 
 function sourceInstruction(source) {
-  if (source === 'volcengine') return '进入 Agent Plan 企业版的“用量统计”，再点同步至 Kindle';
+  if (source === 'volcengine') return '打开火山控制台完成登录；接口 Worker 会自动建立会话并同步';
   return '打开页面登录后，点击同步至 Kindle';
 }
 
@@ -319,7 +319,7 @@ async function openSource(source) {
   try {
     await invoke?.('open_source', { source });
     document.querySelector('#service').textContent = source === 'volcengine'
-      ? '请进入 Agent Plan 企业版的“用量统计”；识别到 AFP 卡片后会自动同步，也可手动同步'
+      ? '火山登录页已打开；登录后会自动建立接口会话并切换到轻量后台 Worker'
       : `${name} 页面已打开；登录后会自动同步，也可手动同步`;
   } catch (error) {
     document.querySelector('#service').textContent = `打开失败：${error}`;
@@ -354,7 +354,7 @@ async function refreshNow() {
     const failed = Array.isArray(result?.failed) ? result.failed : [];
     document.querySelector('#service').textContent = failed.length
       ? serviceDescription(`已触发其余来源；${failed.join('；')}`)
-      : serviceDescription('已触发刷新，等待页面返回');
+      : serviceDescription('已触发刷新，等待接口返回');
   } catch (error) {
     document.querySelector('#service').textContent = `刷新失败：${error}`;
   } finally {
