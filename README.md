@@ -6,8 +6,15 @@
 - Kindle 浏览器、KOReader、Online Screensaver 与 linkss 读取同一张 `/dashboard.png`。
 - 账号 Cookie 只保存在操作系统分配给应用的 WebView 数据目录，不会发送给 Kindle。
 
-当前稳定版：**v0.9.6**
-[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.6)
+当前稳定版：**v0.9.7**
+[下载最新 Release](https://github.com/jnjnnjzch/Token-on-Kindle/releases/tag/v0.9.7)
+
+## v0.9.7 后台刷新回归修复
+
+- 恢复 v0.6.2 的隐藏数据源预热思路，但任何单个 WebView 创建失败都不会终止主界面。
+- 定时刷新和“立即刷新”会自动创建缺失的 Codex、DeepSeek、火山方舟窗口，不再要求先手动点击卡片。
+- 新建窗口会依靠采集脚本自动同步；已有窗口继续执行来源专用刷新逻辑。
+- “立即刷新”增加 15 秒界面保护，原生命令异常时按钮也不会永久转圈。
 
 ## v0.9.6 主界面启动稳定性修复
 

@@ -262,16 +262,23 @@ fn create_source_window(app: &AppHandle, source: &str) -> tauri::Result<()> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
+fn ensure_source_window(app: &AppHandle, source: &str) -> Result<(WebviewWindow, bool), String> {
     let (label, _, _) = source_url(source)?;
-    let window = if let Some(window) = app.get_webview_window(label) {
-        window
-    } else {
-        create_source_window(app, source)
-            .map_err(|error| format!("无法创建 {label} 数据源窗口：{error}"))?;
-        app.get_webview_window(label)
-            .ok_or_else(|| format!("{label} 数据源窗口创建后不可用"))?
-    };
+    if let Some(window) = app.get_webview_window(label) {
+        return Ok((window, false));
+    }
+
+    create_source_window(app, source)
+        .map_err(|error| format!("无法创建 {label} 数据源窗口：{error}"))?;
+    let window = app
+        .get_webview_window(label)
+        .ok_or_else(|| format!("{label} 数据源窗口创建后不可用"))?;
+    Ok((window, true))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_source_impl(app: &AppHandle, source: &str) -> Result<(), String> {
+    let (window, _) = ensure_source_window(app, source)?;
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())?;
     Ok(())
@@ -299,7 +306,18 @@ fn background_refresh_window(
     sync_requested_at: &str,
 ) -> Result<(), String> {
     let sync_script = format!(
-        "if (typeof window.__TOKEN_ON_KINDLE_SYNC__ !== 'function') {{ throw new Error('Token on Kindle sync hook unavailable'); }} void window.__TOKEN_ON_KINDLE_SYNC__({{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: \"{sync_requested_at}\" }})"
+        r#"(() => {{
+          const options = {{ automatic: true, refreshMinutes: {refresh_minutes}, syncRequestedAt: "{sync_requested_at}" }};
+          const deadline = Date.now() + 15000;
+          const run = () => {{
+            if (typeof window.__TOKEN_ON_KINDLE_SYNC__ === 'function') {{
+              Promise.resolve(window.__TOKEN_ON_KINDLE_SYNC__(options)).catch(error => console.error('[Token on Kindle] background sync failed', error));
+              return;
+            }}
+            if (Date.now() < deadline) setTimeout(run, 250);
+          }};
+          run();
+        }})()"#
     );
     if window.is_focused().unwrap_or(false) {
         return window.eval(&sync_script).map_err(|error| error.to_string());
@@ -329,15 +347,25 @@ fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
     let mut refreshed = Vec::new();
     let mut failed = Vec::new();
 
-    for (label, source_name, reload_page) in [
-        ("codex-login", "Codex", true),
-        ("deepseek-login", "DeepSeek", true),
-        ("volcengine-login", "火山方舟", false),
+    for (source, source_name, reload_page) in [
+        ("codex", "Codex", true),
+        ("deepseek", "DeepSeek", true),
+        ("volcengine", "火山方舟", false),
     ] {
-        let Some(window) = app.get_webview_window(label) else {
-            failed.push(format!("{source_name}：后台窗口不存在"));
-            continue;
+        let (window, created) = match ensure_source_window(app, source) {
+            Ok(result) => result,
+            Err(error) => {
+                failed.push(format!("{source_name}：{error}"));
+                continue;
+            }
         };
+
+        if created {
+            let _ = window.hide();
+            refreshed.push(format!("{source_name}（已启动）"));
+            continue;
+        }
+
         match background_refresh_window(&window, reload_page, refresh_minutes, &sync_requested_at) {
             Ok(()) => refreshed.push(source_name.to_string()),
             Err(error) => failed.push(format!("{source_name}：{error}")),
@@ -869,6 +897,13 @@ pub fn run() {
                 .min_inner_size(820.0, 620.0)
                 .on_document_title_changed(|window, title| handle_title_signal(&window, &title))
                 .build()?;
+
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            for source in ["codex", "deepseek", "volcengine"] {
+                if let Err(error) = create_source_window(app.handle(), source) {
+                    eprintln!("source window warm-up failed for {source}: {error}");
+                }
+            }
 
             start_refresh_scheduler(app.handle().clone(), Arc::clone(&refresh));
             if let Err(error) = desktop::build_tray(app) {

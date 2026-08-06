@@ -1,19 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const raw = process.argv[2] || process.env.TOKEN_ON_KINDLE_VERSION;
-if (!raw) {
-  console.error('Usage: node tools/sync-version.mjs v0.3.1');
-  process.exit(2);
-}
+const root = path.resolve(import.meta.dirname, '..');
+const packageJsonPath = path.join(root, 'package.json');
+const packageVersion = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')).version;
+const raw = process.argv[2] || process.env.TOKEN_ON_KINDLE_VERSION || packageVersion;
 
 const version = String(raw).trim().replace(/^v/i, '');
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
   console.error(`Invalid semantic version: ${raw}`);
   process.exit(2);
 }
-
-const root = path.resolve(import.meta.dirname, '..');
 
 function updateJson(relativePath, updater) {
   const file = path.join(root, relativePath);
@@ -36,6 +33,19 @@ if (!/^version\s*=\s*"[^"]+"/m.test(packageBlock)) {
 }
 const updatedBlock = packageBlock.replace(/^version\s*=\s*"[^"]+"/m, `version = "${version}"`);
 fs.writeFileSync(cargoPath, `${cargo.slice(0, packageStart)}${updatedBlock}${cargo.slice(packageEnd)}`);
+
+const cargoLockPath = path.join(root, 'src-tauri', 'Cargo.lock');
+if (fs.existsSync(cargoLockPath)) {
+  const cargoLock = fs.readFileSync(cargoLockPath, 'utf8');
+  const packagePattern = /(\[\[package\]\]\nname = "token-on-kindle"\nversion = ")[^"]+("\n)/;
+  if (!packagePattern.test(cargoLock)) {
+    throw new Error('Could not find token-on-kindle package version in Cargo.lock');
+  }
+  fs.writeFileSync(
+    cargoLockPath,
+    cargoLock.replace(packagePattern, (_match, prefix, suffix) => `${prefix}${version}${suffix}`)
+  );
+}
 
 const versionModule = `// Generated from the release tag / Cargo package version. Do not edit manually.\nexport const APP_VERSION = ${JSON.stringify(version)};\n`;
 fs.writeFileSync(path.join(root, 'web', 'version.js'), versionModule);

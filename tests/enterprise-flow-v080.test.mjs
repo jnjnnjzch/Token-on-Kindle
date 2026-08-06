@@ -18,11 +18,11 @@ test('enterprise Agent Plan capture is explicitly anchored to the AFP usage view
 
 test('enterprise background refresh preserves the confirmed SPA view in the shared native batch', () => {
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
-  assert.match(refreshBlock, /\("codex-login", "Codex", true\)/);
-  assert.match(refreshBlock, /\("deepseek-login", "DeepSeek", true\)/);
-  assert.match(refreshBlock, /\("volcengine-login", "火山方舟", false\)/);
+  assert.match(refreshBlock, /\("codex", "Codex", true\)/);
+  assert.match(refreshBlock, /\("deepseek", "DeepSeek", true\)/);
+  assert.match(refreshBlock, /\("volcengine", "火山方舟", false\)/);
   assert.match(refreshBlock, /reload_page/);
-  const tupleStart = refreshBlock.indexOf('("volcengine-login", "火山方舟", false)');
+  const tupleStart = refreshBlock.indexOf('("volcengine", "火山方舟", false)');
   assert.ok(tupleStart >= 0);
   assert.doesNotMatch(refreshBlock.slice(tupleStart), /\("volcengine-login", "火山方舟", true\)/);
 });

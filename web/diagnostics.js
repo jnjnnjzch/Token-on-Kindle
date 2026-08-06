@@ -59,9 +59,13 @@ function compactVolcengineDiagnostics(payload = {}) {
     primarySource: diagnostics.primarySource,
     instruction: diagnostics.instruction,
     quotaCount: number(diagnostics.quotaCount),
+    modelCount: number(diagnostics.modelCount),
+    modelListCount: number(diagnostics.modelListCount),
+    usageSeriesCount: number(diagnostics.usageSeriesCount),
+    lifecycle: diagnostics.lifecycle,
+    workerPage: diagnostics.workerPage,
     usageViewReady: diagnostics.usageViewReady,
     modelUsageSource: diagnostics.modelUsageSource,
-    modelCount: number(diagnostics.modelCount),
     modelChart: Object.keys(chart).length ? defined({
       chartCount: number(chart.chartCount),
       chartInstanceId: chart.chartInstanceId,
@@ -136,7 +140,9 @@ function compactVolcengine(payload = {}) {
       total: number(item.total),
       usedPercent: number(item.usedPercent),
       remainingPercent: number(item.remainingPercent),
-      resetText: item.resetText
+      resetText: item.resetText,
+      resetTime: number(item.resetTime),
+      subscribeTime: number(item.subscribeTime)
     })) : undefined,
     models: Array.isArray(payload.models) ? payload.models.map(volcengineModelSummary).filter(Boolean) : undefined,
     modelUsage: payload.modelUsage ? defined({
