@@ -11,9 +11,9 @@ test('Volcengine opens on the Agent Plan Enterprise route', () => {
 
 test('desktop refresh preserves the selected Volcengine SPA view', () => {
   const refreshBlock = rust.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
-  assert.match(refreshBlock, /\("codex-login", "Codex", true\)/);
-  assert.match(refreshBlock, /\("deepseek-login", "DeepSeek", true\)/);
-  assert.match(refreshBlock, /\("volcengine-login", "火山方舟", false\)/);
+  assert.match(refreshBlock, /\("codex", "Codex", true\)/);
+  assert.match(refreshBlock, /\("deepseek", "DeepSeek", true\)/);
+  assert.match(refreshBlock, /\("volcengine", "火山方舟", false\)/);
   assert.match(refreshBlock, /match background_refresh_window\(/);
   assert.match(refreshBlock, /Ok\(RefreshSummary \{ refreshed, failed \}\)/);
 });
