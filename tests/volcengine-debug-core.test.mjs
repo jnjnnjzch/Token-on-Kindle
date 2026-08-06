@@ -40,6 +40,7 @@ test('sanitizes secrets from URLs and request bodies', () => {
   const body = summarizeVolcengineRequestBody(JSON.stringify({ Action: 'GetSeatUsageDetails', Authorization: 'secret', SeatID: 'seat-1' }));
   assert.equal(body.hints.Authorization, undefined);
   assert.equal(body.hints.Action, 'GetSeatUsageDetails');
+  assert.equal(body.hints.SeatID, '[identifier]');
 });
 
 test('only replays read-only request shapes', () => {
