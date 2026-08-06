@@ -24,11 +24,15 @@ jobs:
       - name: Apply refresh repair
         run: |
           python3 tools/one-shot-v097-refresh-repair.py
+          python3 tools/one-shot-v097-test-contracts.py
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
           node tools/sync-version.mjs v0.9.7
           cargo fmt --manifest-path src-tauri/Cargo.toml
           rm -f package-lock.json
+          rm -f tools/one-shot-v097-refresh-repair.py
+          rm -f tools/one-shot-v097-test-contracts.py
+          rm -f .github/workflows/one-shot-v097-refresh-repair.yml
 
       - name: Install dependencies
         run: npm install --no-package-lock
@@ -48,10 +52,8 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo check --manifest-path src-tauri/Cargo.toml
 
-      - name: Remove temporary files and commit verified repair
+      - name: Commit verified repair
         run: |
-          rm -f tools/one-shot-v097-refresh-repair.py
-          rm -f .github/workflows/one-shot-v097-refresh-repair.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git diff --check
