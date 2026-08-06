@@ -25,18 +25,22 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply the audited source runtime rewrite
+      - name: Apply the complete audited source runtime rewrite
         run: |
           set -euo pipefail
           python3 tools/one-shot-v097-source-runtime.py
           python3 tools/one-shot-v097-runtime-hardening.py
+          python3 tools/one-shot-v097-final-audit.py
           node tools/compose-extractor.mjs
           node tools/compose-extractor.mjs
           node tools/sync-version.mjs v0.9.7
           cargo fmt --manifest-path src-tauri/Cargo.toml
           rm -f package-lock.json
+          rm -f diagnostics/v097-npm-test.log
+          rmdir diagnostics 2>/dev/null || true
           rm -f tools/one-shot-v097-source-runtime.py
           rm -f tools/one-shot-v097-runtime-hardening.py
+          rm -f tools/one-shot-v097-final-audit.py
           rm -f .github/workflows/one-shot-v097-source-runtime.yml
 
       - name: Install JavaScript dependencies without changing repository locks
@@ -62,8 +66,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f diagnostics/v097-npm-test.log
-          git commit -m "diagnostics: capture v0.9.7 npm failures [skip ci]"
-          git push origin HEAD:agent/fix-background-refresh-v097
+          if ! git diff --cached --quiet; then
+            git commit -m "diagnostics: capture v0.9.7 npm failures [skip ci]"
+            git push origin HEAD:agent/fix-background-refresh-v097
+          fi
 
       - name: Stop after diagnostic capture
         if: steps.javascript_suite.outputs.exit_code != '0'
@@ -91,7 +97,9 @@ jobs:
           git diff --check
           test ! -e tools/one-shot-v097-source-runtime.py
           test ! -e tools/one-shot-v097-runtime-hardening.py
+          test ! -e tools/one-shot-v097-final-audit.py
           test ! -e .github/workflows/one-shot-v097-source-runtime.yml
+          test ! -e diagnostics/v097-npm-test.log
           test ! -e package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
