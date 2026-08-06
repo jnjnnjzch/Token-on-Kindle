@@ -11,6 +11,7 @@ const DEFAULT_REFRESH_MINUTES = 10;
 const MIN_REFRESH_MINUTES = 1;
 const MAX_REFRESH_MINUTES = 1440;
 const PUBLISH_DEBOUNCE_MS = 350;
+const REFRESH_COMMAND_TIMEOUT_MS = 15_000;
 const SOURCES = Object.freeze([
   { id: 'codex', name: 'Codex' },
   { id: 'deepseek', name: 'DeepSeek' },
@@ -100,7 +101,7 @@ function hasUsefulData(source, payload) {
 }
 
 function sourceInstruction(source) {
-  if (source === 'volcengine') return '进入 Agent Plan 企业版的“用量统计”，再点同步至 Kindle';
+  if (source === 'volcengine') return '打开火山控制台完成登录；接口 Worker 会自动建立会话并同步';
   return '打开页面登录后，点击同步至 Kindle';
 }
 
@@ -318,10 +319,24 @@ async function openSource(source) {
   try {
     await invoke?.('open_source', { source });
     document.querySelector('#service').textContent = source === 'volcengine'
-      ? '请进入 Agent Plan 企业版的“用量统计”，看到 AFP 卡片后点击“同步至 Kindle”'
-      : `${name} 页面已打开，请登录后点击“同步至 Kindle”`;
+      ? '火山登录页已打开；登录后会自动建立接口会话并切换到轻量后台 Worker'
+      : `${name} 页面已打开；登录后会自动同步，也可手动同步`;
   } catch (error) {
     document.querySelector('#service').textContent = `打开失败：${error}`;
+  }
+}
+
+async function invokeRefreshSources() {
+  let timer = null;
+  try {
+    return await Promise.race([
+      invoke('refresh_sources'),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('刷新命令超过 15 秒未返回')), REFRESH_COMMAND_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -335,11 +350,11 @@ async function refreshNow() {
   button.disabled = true;
   document.querySelector('#service').textContent = '正在重新载入数据源…';
   try {
-    const result = await invoke?.('refresh_sources');
+    const result = await invokeRefreshSources();
     const failed = Array.isArray(result?.failed) ? result.failed : [];
     document.querySelector('#service').textContent = failed.length
       ? serviceDescription(`已触发其余来源；${failed.join('；')}`)
-      : serviceDescription('已触发刷新，等待页面返回');
+      : serviceDescription('已触发刷新，等待接口返回');
   } catch (error) {
     document.querySelector('#service').textContent = `刷新失败：${error}`;
   } finally {
