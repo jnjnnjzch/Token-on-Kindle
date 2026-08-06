@@ -37,6 +37,16 @@ if (!/^version\s*=\s*"[^"]+"/m.test(packageBlock)) {
 const updatedBlock = packageBlock.replace(/^version\s*=\s*"[^"]+"/m, `version = "${version}"`);
 fs.writeFileSync(cargoPath, `${cargo.slice(0, packageStart)}${updatedBlock}${cargo.slice(packageEnd)}`);
 
+const cargoLockPath = path.join(root, 'src-tauri', 'Cargo.lock');
+if (fs.existsSync(cargoLockPath)) {
+  const cargoLock = fs.readFileSync(cargoLockPath, 'utf8');
+  const packagePattern = /(\[\[package\]\]\nname = "token-on-kindle"\nversion = ")[^"]+("\n)/;
+  if (!packagePattern.test(cargoLock)) {
+    throw new Error('Could not find token-on-kindle package version in Cargo.lock');
+  }
+  fs.writeFileSync(cargoLockPath, cargoLock.replace(packagePattern, `$1${version}$2`));
+}
+
 const versionModule = `// Generated from the release tag / Cargo package version. Do not edit manually.\nexport const APP_VERSION = ${JSON.stringify(version)};\n`;
 fs.writeFileSync(path.join(root, 'web', 'version.js'), versionModule);
 
