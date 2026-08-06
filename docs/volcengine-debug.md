@@ -8,6 +8,21 @@
 - 模型 Token：读取 ReactECharts / ECharts 实例的 `option`，再解析 `series` 或 `dataset`。
 - 后台刷新：保留当前企业版 SPA 页面，在页面内触发查询或同步。
 
+## 构建命令
+
+```bash
+npm run check:volcengine-debug
+npm run debug:volcengine
+```
+
+需要生成安装包时使用：
+
+```bash
+npm run build:volcengine-debug
+```
+
+普通的 `npm run dev` 和 `npm run build` 不包含诊断探针；只有上述显式诊断命令会先重新生成正式 extractor，再附加调试模块。
+
 ## 诊断链路
 
 1. **DOM**：独立读取三张 AFP 卡片。
@@ -18,7 +33,7 @@
 
 ## 使用方法
 
-1. 运行此分支构建的桌面程序。
+1. 运行诊断构建的桌面程序。
 2. 打开“火山方舟”卡片并完成网页登录。
 3. 点击注入工具栏中的“开启火山诊断”；页面会刷新一次，以便诊断器从文档初始化阶段安装网络钩子。
 4. 保持在 Agent Plan 企业版用量页面，等待卡片和模型图表加载。
