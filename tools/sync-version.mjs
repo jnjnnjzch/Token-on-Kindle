@@ -1,19 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const raw = process.argv[2] || process.env.TOKEN_ON_KINDLE_VERSION;
-if (!raw) {
-  console.error('Usage: node tools/sync-version.mjs v0.3.1');
-  process.exit(2);
-}
+const root = path.resolve(import.meta.dirname, '..');
+const packageJsonPath = path.join(root, 'package.json');
+const packageVersion = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')).version;
+const raw = process.argv[2] || process.env.TOKEN_ON_KINDLE_VERSION || packageVersion;
 
 const version = String(raw).trim().replace(/^v/i, '');
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
   console.error(`Invalid semantic version: ${raw}`);
   process.exit(2);
 }
-
-const root = path.resolve(import.meta.dirname, '..');
 
 function updateJson(relativePath, updater) {
   const file = path.join(root, relativePath);
