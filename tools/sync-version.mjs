@@ -41,7 +41,10 @@ if (fs.existsSync(cargoLockPath)) {
   if (!packagePattern.test(cargoLock)) {
     throw new Error('Could not find token-on-kindle package version in Cargo.lock');
   }
-  fs.writeFileSync(cargoLockPath, cargoLock.replace(packagePattern, `$1${version}$2`));
+  fs.writeFileSync(
+    cargoLockPath,
+    cargoLock.replace(packagePattern, (_match, prefix, suffix) => `${prefix}${version}${suffix}`)
+  );
 }
 
 const versionModule = `// Generated from the release tag / Cargo package version. Do not edit manually.\nexport const APP_VERSION = ${JSON.stringify(version)};\n`;
