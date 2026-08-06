@@ -9,7 +9,7 @@
     "smoke": "node tools/smoke-server.mjs",
     "tauri": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri",
     "dev": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri dev",
-    "build": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && tauri build",
+    "build": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-volcengine-debug.mjs && tauri build",
     "debug:volcengine": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-volcengine-debug.mjs && tauri dev",
     "build:volcengine-debug": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-volcengine-debug.mjs && tauri build",
     "check:volcengine-debug": "node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-volcengine-debug.mjs --check",
