@@ -1,0 +1,895 @@
+
+> token-on-kindle@0.9.7 test
+> node tools/compose-volcengine-model-list.mjs && node tools/compose-volcengine-model-list.mjs && node tools/compose-extractor.mjs && node tools/compose-extractor.mjs && node tools/check-version-sync.mjs && node --test tests/*.test.mjs && node --check web/app.js && node --check web/png-worker.js && node --check web/kindle-renderer.js && node --check web/extractor-base.js && node --check web/extractor.js && node --check web/deepseek-direct-reader.js && node --check web/volcengine-chart-reader.js && node --check web/diagnostics.js && node --check shared/deepseek-response-parser-v2.mjs && node --check shared/volcengine-response-parser.mjs && node --check shared/volcengine-echarts-parser.mjs && node --check shared/volcengine-react-echarts-access.mjs && node --check shared/deepseek-summary-parser.mjs && node --check shared/deepseek-platform-parser.mjs && node --check web/update.js && node --check tools/compose-volcengine-model-list.mjs && node --check tools/compose-extractor.mjs && node --check tools/sync-version.mjs && node --check web/desktop.js
+
+Composed today-only Volcengine model list for Kindle 7
+Composed today-only Volcengine model list for Kindle 7
+Composed stable compact Codex, DeepSeek, and Volcengine readers
+Composed stable compact Codex, DeepSeek, and Volcengine readers
+Version files are synchronized: 0.9.7
+TAP version 13
+# Subtest: dashboard setup returns without synchronously constructing external WebViews
+ok 1 - dashboard setup returns without synchronously constructing external WebViews
+  ---
+  duration_ms: 1.324282
+  type: 'test'
+  ...
+# Subtest: window creation is independently serialized and auto-syncs after a matching page load
+ok 2 - window creation is independently serialized and auto-syncs after a matching page load
+  ---
+  duration_ms: 0.379644
+  type: 'test'
+  ...
+# Subtest: manual, tray, and scheduled refresh share a receipt-driven native batch
+ok 3 - manual, tray, and scheduled refresh share a receipt-driven native batch
+  ---
+  duration_ms: 0.362538
+  type: 'test'
+  ...
+# Subtest: tray event handlers never create or refresh WebViews synchronously
+ok 4 - tray event handlers never create or refresh WebViews synchronously
+  ---
+  duration_ms: 0.362779
+  type: 'test'
+  ...
+# Subtest: control center releases the button and reports actual batch receipts
+ok 5 - control center releases the button and reports actual batch receipts
+  ---
+  duration_ms: 0.249066
+  type: 'test'
+  ...
+# Subtest: all generated source readers autonomously collect after hidden-window startup
+ok 6 - all generated source readers autonomously collect after hidden-window startup
+  ---
+  duration_ms: 0.301676
+  type: 'test'
+  ...
+# Subtest: persistent pipeline runs Rust source-runtime tests on Linux
+ok 7 - persistent pipeline runs Rust source-runtime tests on Linux
+  ---
+  duration_ms: 2.284203
+  type: 'test'
+  ...
+# Subtest: runtime settings expose distinct browser and image URLs
+ok 8 - runtime settings expose distinct browser and image URLs
+  ---
+  duration_ms: 0.781451
+  type: 'test'
+  ...
+# Subtest: extracts weekly Codex remaining quota
+ok 9 - extracts weekly Codex remaining quota
+  ---
+  duration_ms: 2.101947
+  type: 'test'
+  ...
+# Subtest: does not invent a removed 5-hour bucket
+ok 10 - does not invent a removed 5-hour bucket
+  ---
+  duration_ms: 0.639097
+  type: 'test'
+  ...
+# Subtest: extracts DeepSeek labeled values
+ok 11 - extracts DeepSeek labeled values
+  ---
+  duration_ms: 2.428862
+  type: 'test'
+  ...
+# Subtest: encodes a genuine 8-bit grayscale 600x800 PNG
+ok 12 - encodes a genuine 8-bit grayscale 600x800 PNG
+  ---
+  duration_ms: 41.909003
+  type: 'test'
+  ...
+# Subtest: flattens alpha when converting RGBA
+ok 13 - flattens alpha when converting RGBA
+  ---
+  duration_ms: 0.296939
+  type: 'test'
+  ...
+# Subtest: extractor composition is repeatable, CRLF-safe, and shared by Cargo
+ok 14 - extractor composition is repeatable, CRLF-safe, and shared by Cargo
+  ---
+  duration_ms: 7.529131
+  type: 'test'
+  ...
+# Subtest: range cost falls back from the numeric value node to the full card text
+ok 15 - range cost falls back from the numeric value node to the full card text
+  ---
+  duration_ms: 1.34261
+  type: 'test'
+  ...
+# Subtest: Cost uses an exact label so Total cost cannot be selected as the range cost
+ok 16 - Cost uses an exact label so Total cost cannot be selected as the range cost
+  ---
+  duration_ms: 0.21797
+  type: 'test'
+  ...
+# Subtest: Chinese selected-range labels are supported without accepting 今日消耗
+ok 17 - Chinese selected-range labels are supported without accepting 今日消耗
+  ---
+  duration_ms: 1.486366
+  type: 'test'
+  ...
+# Subtest: DeepSeek uses the Platform page APIs first and keeps page fallback isolated
+ok 18 - DeepSeek uses the Platform page APIs first and keeps page fallback isolated
+  ---
+  duration_ms: 7.790126
+  type: 'test'
+  ...
+# Subtest: fixture contains the exact balance card without the alert text in its value node
+ok 19 - fixture contains the exact balance card without the alert text in its value node
+  ---
+  duration_ms: 1.006541
+  type: 'test'
+  ...
+# Subtest: parses Flash and Pro daily cost from the chart tooltip
+ok 20 - parses Flash and Pro daily cost from the chart tooltip
+  ---
+  duration_ms: 0.998009
+  type: 'test'
+  ...
+# Subtest: parses daily token composition and cache rate
+ok 21 - parses daily token composition and cache rate
+  ---
+  duration_ms: 0.480807
+  type: 'test'
+  ...
+# Subtest: sums the whole month from daily internal API buckets when summary monthly fields are absent
+ok 22 - sums the whole month from daily internal API buckets when summary monthly fields are absent
+  ---
+  duration_ms: 3.755457
+  type: 'test'
+  ...
+# Subtest: monthly totals include models outside the two daily display cards
+ok 23 - monthly totals include models outside the two daily display cards
+  ---
+  duration_ms: 0.514297
+  type: 'test'
+  ...
+# Subtest: parses the actual DeepSeek amount/cost response schema by model and day
+ok 24 - parses the actual DeepSeek amount/cost response schema by model and day
+  ---
+  duration_ms: 3.712813
+  type: 'test'
+  ...
+# Subtest: uses the latest API day when local and UTC dates are absent
+ok 25 - uses the latest API day when local and UTC dates are absent
+  ---
+  duration_ms: 0.725467
+  type: 'test'
+  ...
+# Subtest: does not turn monthly totals into Flash or Pro daily values
+ok 26 - does not turn monthly totals into Flash or Pro daily values
+  ---
+  duration_ms: 2.206556
+  type: 'test'
+  ...
+# Subtest: parses flat model/day records with cost and cache tokens
+ok 27 - parses flat model/day records with cost and cache tokens
+  ---
+  duration_ms: 8.2292
+  type: 'test'
+  ...
+# Subtest: parses cost chart series split by model
+ok 28 - parses cost chart series split by model
+  ---
+  duration_ms: 9.667404
+  type: 'test'
+  ...
+# Subtest: parses token chart whose model identity comes from request URL
+ok 29 - parses token chart whose model identity comes from request URL
+  ---
+  duration_ms: 1.063839
+  type: 'test'
+  ...
+# Subtest: parses nested metric name/value objects
+ok 30 - parses nested metric name/value objects
+  ---
+  duration_ms: 0.587258
+  type: 'test'
+  ...
+# Subtest: does not copy an unscoped range total into both models
+ok 31 - does not copy an unscoped range total into both models
+  ---
+  duration_ms: 0.420505
+  type: 'test'
+  ...
+# Subtest: prefers the newest response for the same model/date/metric
+ok 32 - prefers the newest response for the same model/date/metric
+  ---
+  duration_ms: 1.54823
+  type: 'test'
+  ...
+# Subtest: parses range cost when currency, amount, and unit are split across DOM lines
+ok 33 - parses range cost when currency, amount, and unit are split across DOM lines
+  ---
+  duration_ms: 2.029828
+  type: 'test'
+  ...
+# Subtest: does not treat an unrelated bare number as money without a nearby currency marker
+ok 34 - does not treat an unrelated bare number as money without a nearby currency marker
+  ---
+  duration_ms: 0.677164
+  type: 'test'
+  ...
+# Subtest: reads the visible DeepSeek summary cards from the current Usage page
+ok 35 - reads the visible DeepSeek summary cards from the current Usage page
+  ---
+  duration_ms: 2.11674
+  type: 'test'
+  ...
+# Subtest: does not confuse model-section totals with the top summary cards
+ok 36 - does not confuse model-section totals with the top summary cards
+  ---
+  duration_ms: 0.440065
+  type: 'test'
+  ...
+# Subtest: reads an inline balance card even when alert controls share the same line
+ok 37 - reads an inline balance card even when alert controls share the same line
+  ---
+  duration_ms: 0.737055
+  type: 'test'
+  ...
+# Subtest: desktop integrations use the real app icon and native tray events
+ok 38 - desktop integrations use the real app icon and native tray events
+  ---
+  duration_ms: 1.27719
+  type: 'test'
+  ...
+# Subtest: tray provides background, browser, update, and autostart controls
+ok 39 - tray provides background, browser, update, and autostart controls
+  ---
+  duration_ms: 0.376479
+  type: 'test'
+  ...
+# Subtest: desktop UI mirrors state and tray update actions
+ok 40 - desktop UI mirrors state and tray update actions
+  ---
+  duration_ms: 1.921214
+  type: 'test'
+  ...
+# Subtest: Linux has a safe close fallback and macOS uses menu bar mode
+ok 41 - Linux has a safe close fallback and macOS uses menu bar mode
+  ---
+  duration_ms: 0.233643
+  type: 'test'
+  ...
+# Subtest: DeepSeek diagnostic summary keeps useful fields and removes noisy raw data
+ok 42 - DeepSeek diagnostic summary keeps useful fields and removes noisy raw data
+  ---
+  duration_ms: 1.585076
+  type: 'test'
+  ...
+# Subtest: balanced vertical flow keeps internal gaps equal and bounded
+ok 43 - balanced vertical flow keeps internal gaps equal and bounded
+  ---
+  duration_ms: 1.499496
+  type: 'test'
+  ...
+# Subtest: DeepSeek summary and model sections adapt across all card heights
+ok 44 - DeepSeek summary and model sections adapt across all card heights
+  ---
+  duration_ms: 1.430562
+  type: 'test'
+  ...
+# Subtest: all sources share one native refresh batch and no page owns a recurring timer
+ok 45 - all sources share one native refresh batch and no page owns a recurring timer
+  ---
+  duration_ms: 0.598584
+  type: 'test'
+  ...
+# Subtest: enterprise Agent Plan capture is explicitly anchored to the AFP usage view
+ok 46 - enterprise Agent Plan capture is explicitly anchored to the AFP usage view
+  ---
+  duration_ms: 1.460548
+  type: 'test'
+  ...
+# Subtest: enterprise background refresh preserves the confirmed SPA view in the shared native batch
+ok 47 - enterprise background refresh preserves the confirmed SPA view in the shared native batch
+  ---
+  duration_ms: 0.50279
+  type: 'test'
+  ...
+# Subtest: source selection is only Codex, DeepSeek, and Volcengine
+ok 48 - source selection is only Codex, DeepSeek, and Volcengine
+  ---
+  duration_ms: 0.301025
+  type: 'test'
+  ...
+# Subtest: local HTTP server exposes browser and image routes
+ok 49 - local HTTP server exposes browser and image routes
+  ---
+  duration_ms: 3.16851
+  type: 'test'
+  ...
+# Subtest: control center exposes browser URL and refresh input
+ok 50 - control center exposes browser URL and refresh input
+  ---
+  duration_ms: 0.272011
+  type: 'test'
+  ...
+# Subtest: Kindle browser page busts cached dashboard images
+ok 51 - Kindle browser page busts cached dashboard images
+  ---
+  duration_ms: 1.161496
+  type: 'test'
+  ...
+# Subtest: model cache bars use the displayed cache percentage
+ok 52 - model cache bars use the displayed cache percentage
+  ---
+  duration_ms: 1.194887
+  type: 'test'
+  ...
+# Subtest: cache bar ratios are clamped to the visible range
+ok 53 - cache bar ratios are clamped to the visible range
+  ---
+  duration_ms: 0.197338
+  type: 'test'
+  ...
+# Subtest: model cards preserve the three DeepSeek token categories
+ok 54 - model cards preserve the three DeepSeek token categories
+  ---
+  duration_ms: 2.639279
+  type: 'test'
+  ...
+# Subtest: dashboard startup tolerates null source payloads
+ok 55 - dashboard startup tolerates null source payloads
+  ---
+  duration_ms: 2.942298
+  type: 'test'
+  ...
+# Subtest: refresh attempts every source and reports partial failures
+ok 56 - refresh attempts every source and reports partial failures
+  ---
+  duration_ms: 1.068886
+  type: 'test'
+  ...
+# Subtest: Volcengine refreshes the current SPA controls and expires stale chart fallback
+ok 57 - Volcengine refreshes the current SPA controls and expires stale chart fallback
+  ---
+  duration_ms: 0.226783
+  type: 'test'
+  ...
+# Subtest: partial refresh failures remain visible in the control center
+ok 58 - partial refresh failures remain visible in the control center
+  ---
+  duration_ms: 0.151549
+  type: 'test'
+  ...
+# Subtest: unused Volcengine full-response cache is absent from source and release extractor
+ok 59 - unused Volcengine full-response cache is absent from source and release extractor
+  ---
+  duration_ms: 0.329257
+  type: 'test'
+  ...
+# Subtest: hidden Volcengine WebView can still trigger the matched SPA refresh control
+ok 60 - hidden Volcengine WebView can still trigger the matched SPA refresh control
+  ---
+  duration_ms: 0.149205
+  type: 'test'
+  ...
+# Subtest: main window starts first and provider warm-up is detached and non-fatal
+ok 61 - main window starts first and provider warm-up is detached and non-fatal
+  ---
+  duration_ms: 1.311953
+  type: 'test'
+  ...
+# Subtest: manual and scheduled refresh recreate or follow up every provider window
+not ok 62 - manual and scheduled refresh recreate or follow up every provider window
+  ---
+  duration_ms: 1.347627
+  type: 'test'
+  location: '/home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/main-window-startup-v096.test.mjs:18:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /SourceWindowState::Created/. Input:
+    
+    'fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {\n' +
+      '    let state = app.state::<AppState>();\n' +
+      '    let now_ms = unix_millis();\n' +
+      '    let Some(sync_requested_at) = begin_refresh_batch(&state.source_runtime, now_ms)? else {\n' +
+      '        let snapshot = active_refresh_snapshot(&state.source_runtime)?;\n' +
+      '        let (requested_at, pending_ids) = snapshot\n' +
+      '            .map(|(requested_at, pending)| (Some(requested_at), pending))\n' +
+      '            .unwrap_or((None, Vec::new()));\n' +
+      '        return Ok(RefreshSummary {\n' +
+      '            requested_at,\n' +
+      '            expected: pending_ids.clone(),\n' +
+      '            refreshed: Vec::new(),\n' +
+      '            started: Vec::new(),\n' +
+      '            pending: pending_ids\n' +
+      '                .iter()\n' +
+      '                .map(|source| source_display_name(source))\n' +
+      '                .collect(),\n' +
+      '            failed: Vec::new(),\n' +
+      '            already_running: true,\n' +
+      '        });\n' +
+      '    };\n' +
+      '\n' +
+      '    let refresh_minutes = state.refresh.get();\n' +
+      '    let mut expected = Vec::new();\n' +
+      '    let mut pending = Vec::new();\n' +
+      '    let mut failed = Vec::new();\n' +
+      '\n' +
+      '    for (source, source_name, reload_page) in [\n' +
+      '        ("codex", "Codex", true),\n' +
+      '        ("deepseek", "DeepSeek", true),\n' +
+      '        ("volcengine", "火山方舟", false),\n' +
+      '    ] {\n' +
+      '        match spawn_source_refresh_worker(\n' +
+      '            app,\n' +
+      '            source,\n' +
+      '            source_name,\n' +
+      '            reload_page,\n' +
+      '            refresh_minutes,\n' +
+      '            &sync_requested_at,\n' +
+      '        ) {\n' +
+      '            Ok(()) => {\n' +
+      '                expected.push(source.to_string());\n' +
+      '                pending.push(source_name.to_string());\n' +
+      '            }\n' +
+      '            Err(error) => {\n' +
+      '                let _ = finish_refresh_source(&state.source_runtime, &sync_requested_at, source);\n' +
+      '                failed.push(error);\n' +
+      '            }\n' +
+      '        }\n' +
+      '    }\n' +
+      '\n' +
+      '    Ok(RefreshSummary {\n' +
+      '        requested_at: Some(sync_requested_at),\n' +
+      '        expected,\n' +
+      '        refreshed: Vec::new(),\n' +
+      '        started: Vec::new(),\n' +
+      '        pending,\n' +
+      '        failed,\n' +
+      '        already_running: false,\n' +
+      '    })\n' +
+      '}\n' +
+      '\n'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
+        let state = app.state::<AppState>();
+        let now_ms = unix_millis();
+        let Some(sync_requested_at) = begin_refresh_batch(&state.source_runtime, now_ms)? else {
+            let snapshot = active_refresh_snapshot(&state.source_runtime)?;
+            let (requested_at, pending_ids) = snapshot
+                .map(|(requested_at, pending)| (Some(requested_at), pending))
+                .unwrap_or((None, Vec::new()));
+            return Ok(RefreshSummary {
+                requested_at,
+                expected: pending_ids.clone(),
+                refreshed: Vec::new(),
+                started: Vec::new(),
+                pending: pending_ids
+                    .iter()
+                    .map(|source| source_display_name(source))
+                    .collect(),
+                failed: Vec::new(),
+                already_running: true,
+            });
+        };
+    
+        let refresh_minutes = state.refresh.get();
+        let mut expected = Vec::new();
+        let mut pending = Vec::new();
+        let mut failed = Vec::new();
+    
+        for (source, source_name, reload_page) in [
+            ("codex", "Codex", true),
+            ("deepseek", "DeepSeek", true),
+            ("volcengine", "火山方舟", false),
+        ] {
+            match spawn_source_refresh_worker(
+                app,
+                source,
+                source_name,
+                reload_page,
+                refresh_minutes,
+                &sync_requested_at,
+            ) {
+                Ok(()) => {
+                    expected.push(source.to_string());
+                    pending.push(source_name.to_string());
+                }
+                Err(error) => {
+                    let _ = finish_refresh_source(&state.source_runtime, &sync_requested_at, source);
+                    failed.push(error);
+                }
+            }
+        }
+    
+        Ok(RefreshSummary {
+            requested_at: Some(sync_requested_at),
+            expected,
+            refreshed: Vec::new(),
+            started: Vec::new(),
+            pending,
+            failed,
+            already_running: false,
+        })
+    }
+    
+    
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/Token-on-Kindle/Token-on-Kindle/tests/main-window-startup-v096.test.mjs:25:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: dashboard PNG uses the v0.6.2 direct encoder path
+ok 63 - dashboard PNG uses the v0.6.2 direct encoder path
+  ---
+  duration_ms: 0.200023
+  type: 'test'
+  ...
+# Subtest: Kindle DeepSeek card keeps cumulative and monthly amount statistics
+ok 64 - Kindle DeepSeek card keeps cumulative and monthly amount statistics
+  ---
+  duration_ms: 1.588401
+  type: 'test'
+  ...
+# Subtest: selected-range totals are not substituted for account monthly totals
+ok 65 - selected-range totals are not substituted for account monthly totals
+  ---
+  duration_ms: 0.291932
+  type: 'test'
+  ...
+# Subtest: Kindle profile ids and dimensions are unique and portrait-oriented
+ok 66 - Kindle profile ids and dimensions are unique and portrait-oriented
+  ---
+  duration_ms: 1.219995
+  type: 'test'
+  ...
+# Subtest: unknown profiles fall back to classic 600x800
+ok 67 - unknown profiles fall back to classic 600x800
+  ---
+  duration_ms: 0.971649
+  type: 'test'
+  ...
+# Subtest: the PNG encoder supports every native Kindle profile
+ok 68 - the PNG encoder supports every native Kindle profile
+  ---
+  duration_ms: 399.446312
+  type: 'test'
+  ...
+# Subtest: PNG generation uses the proven v0.6.2 direct encoder with single-flight publishing
+ok 69 - PNG generation uses the proven v0.6.2 direct encoder with single-flight publishing
+  ---
+  duration_ms: 2.847905
+  type: 'test'
+  ...
+# Subtest: manual refresh is single-flight and always releases the UI
+ok 70 - manual refresh is single-flight and always releases the UI
+  ---
+  duration_ms: 0.308767
+  type: 'test'
+  ...
+# Subtest: tray updates are serialized and deduplicated before opening Kindle pages
+ok 71 - tray updates are serialized and deduplicated before opening Kindle pages
+  ---
+  duration_ms: 0.269137
+  type: 'test'
+  ...
+# Subtest: release extractor removes the hidden WebView close-on-reload race
+ok 72 - release extractor removes the hidden WebView close-on-reload race
+  ---
+  duration_ms: 0.282066
+  type: 'test'
+  ...
+# Subtest: source signals stay compact enough for the title bridge
+ok 73 - source signals stay compact enough for the title bridge
+  ---
+  duration_ms: 0.20555
+  type: 'test'
+  ...
+# Subtest: source hide button uses the native dashboard action instead of closing the WebView
+ok 74 - source hide button uses the native dashboard action instead of closing the WebView
+  ---
+  duration_ms: 0.19883
+  type: 'test'
+  ...
+# Subtest: source toolbar no longer claims native receipt before the main window updates
+ok 75 - source toolbar no longer claims native receipt before the main window updates
+  ---
+  duration_ms: 0.296548
+  type: 'test'
+  ...
+# Subtest: refresh interval is persisted and sent to the native scheduler
+ok 76 - refresh interval is persisted and sent to the native scheduler
+  ---
+  duration_ms: 1.020723
+  type: 'test'
+  ...
+# Subtest: repository keeps one reusable workflow and cleans legacy branches and runs
+ok 77 - repository keeps one reusable workflow and cleans legacy branches and runs
+  ---
+  duration_ms: 1.280686
+  type: 'test'
+  ...
+# Subtest: Codex weekly and 5h quotas are selected for one shared two-column card
+ok 78 - Codex weekly and 5h quotas are selected for one shared two-column card
+  ---
+  duration_ms: 2.015838
+  type: 'test'
+  ...
+# Subtest: Codex falls back to a single available quota without inventing a second column
+ok 79 - Codex falls back to a single available quota without inventing a second column
+  ---
+  duration_ms: 1.524865
+  type: 'test'
+  ...
+# Subtest: DeepSeek summary follows the currently selected page range
+ok 80 - DeepSeek summary follows the currently selected page range
+  ---
+  duration_ms: 0.343079
+  type: 'test'
+  ...
+# Subtest: unlock background spans the full image and covers the complete firmware text area
+ok 81 - unlock background spans the full image and covers the complete firmware text area
+  ---
+  duration_ms: 0.270358
+  type: 'test'
+  ...
+# Subtest: Kindle output contains no refresh or connection-status copy
+ok 82 - Kindle output contains no refresh or connection-status copy
+  ---
+  duration_ms: 9.03611
+  type: 'test'
+  ...
+# Subtest: scheduler is woken when refresh interval changes
+ok 83 - scheduler is woken when refresh interval changes
+  ---
+  duration_ms: 0.798768
+  type: 'test'
+  ...
+# Subtest: all seven non-empty source combinations receive bounded Kindle layout boxes
+ok 84 - all seven non-empty source combinations receive bounded Kindle layout boxes
+  ---
+  duration_ms: 2.493118
+  type: 'test'
+  ...
+# Subtest: DeepSeek always receives enough height for Flash and Pro details
+ok 85 - DeepSeek always receives enough height for Flash and Pro details
+  ---
+  duration_ms: 0.385012
+  type: 'test'
+  ...
+# Subtest: DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate
+ok 86 - DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate
+  ---
+  duration_ms: 0.455949
+  type: 'test'
+  ...
+# Subtest: Codex keeps a full-width single quota when no 5h limit exists
+ok 87 - Codex keeps a full-width single quota when no 5h limit exists
+  ---
+  duration_ms: 0.4699
+  type: 'test'
+  ...
+# Subtest: DeepSeek money statistics retain cumulative and monthly values
+ok 88 - DeepSeek money statistics retain cumulative and monthly values
+  ---
+  duration_ms: 0.236777
+  type: 'test'
+  ...
+# Subtest: all three source controls expose actionable connection states
+ok 89 - all three source controls expose actionable connection states
+  ---
+  duration_ms: 0.8401
+  type: 'test'
+  ...
+# Subtest: desktop source windows use the proven v0.8.2 title bridge
+ok 90 - desktop source windows use the proven v0.8.2 title bridge
+  ---
+  duration_ms: 3.553532
+  type: 'test'
+  ...
+# Subtest: generated extractor never closes native source windows during refresh
+ok 91 - generated extractor never closes native source windows during refresh
+  ---
+  duration_ms: 0.598074
+  type: 'test'
+  ...
+# Subtest: compact payloads remain enabled on the title transport
+ok 92 - compact payloads remain enabled on the title transport
+  ---
+  duration_ms: 0.252852
+  type: 'test'
+  ...
+# Subtest: unlock area is a full-width gray firmware-safe band
+ok 93 - unlock area is a full-width gray firmware-safe band
+  ---
+  duration_ms: 2.85089
+  type: 'test'
+  ...
+# Subtest: Windows updater uses an independent executable helper instead of a silent post-exit PowerShell script
+ok 94 - Windows updater uses an independent executable helper instead of a silent post-exit PowerShell script
+  ---
+  duration_ms: 0.947242
+  type: 'test'
+  ...
+# Subtest: cross-version updates run the helper from the downloaded new binary
+ok 95 - cross-version updates run the helper from the downloaded new binary
+  ---
+  duration_ms: 0.216538
+  type: 'test'
+  ...
+# Subtest: updater preflights the target directory and performs recoverable replacement
+ok 96 - updater preflights the target directory and performs recoverable replacement
+  ---
+  duration_ms: 0.146381
+  type: 'test'
+  ...
+# Subtest: tray readiness is pushed after native tray creation and re-read by the UI
+ok 97 - tray readiness is pushed after native tray creation and re-read by the UI
+  ---
+  duration_ms: 0.196056
+  type: 'test'
+  ...
+# Subtest: the UI confirms a completed update only after the restarted binary reports the requested version
+ok 98 - the UI confirms a completed update only after the restarted binary reports the requested version
+  ---
+  duration_ms: 0.241515
+  type: 'test'
+  ...
+# Subtest: Windows portable updater downloads, verifies, replaces, and restarts
+ok 99 - Windows portable updater downloads, verifies, replaces, and restarts
+  ---
+  duration_ms: 2.563915
+  type: 'test'
+  ...
+# Subtest: reads every model series directly from the rendered ECharts option
+ok 100 - reads every model series directly from the rendered ECharts option
+  ---
+  duration_ms: 4.4781
+  type: 'test'
+  ...
+# Subtest: supports ECharts dataset rows when series data is dataset-driven
+ok 101 - supports ECharts dataset rows when series data is dataset-driven
+  ---
+  duration_ms: 0.773449
+  type: 'test'
+  ...
+# Subtest: keeps zero-valued legend models without inventing token points
+ok 102 - keeps zero-valued legend models without inventing token points
+  ---
+  duration_ms: 11.752566
+  type: 'test'
+  ...
+# Subtest: walks the real React DOM fiber shape to call ReactECharts.getEchartsInstance()
+ok 103 - walks the real React DOM fiber shape to call ReactECharts.getEchartsInstance()
+  ---
+  duration_ms: 0.749223
+  type: 'test'
+  ...
+# Subtest: uses the official global ECharts instance when the page exposes it
+ok 104 - uses the official global ECharts instance when the page exposes it
+  ---
+  duration_ms: 0.269047
+  type: 'test'
+  ...
+# Subtest: Volcengine overlay reads ReactECharts state without intercepting page requests
+ok 105 - Volcengine overlay reads ReactECharts state without intercepting page requests
+  ---
+  duration_ms: 12.802022
+  type: 'test'
+  ...
+# Subtest: diagnostic JSON preserves model names, tokens and direct chart access details
+ok 106 - diagnostic JSON preserves model names, tokens and direct chart access details
+  ---
+  duration_ms: 0.876094
+  type: 'test'
+  ...
+# Subtest: legacy Volcengine response parser remains compatible with exported API fixtures
+ok 107 - legacy Volcengine response parser remains compatible with exported API fixtures
+  ---
+  duration_ms: 5.565949
+  type: 'test'
+  ...
+# Subtest: legacy response parser still selects the newest payload instead of summing refreshes
+ok 108 - legacy response parser still selects the newest payload instead of summing refreshes
+  ---
+  duration_ms: 0.51632
+  type: 'test'
+  ...
+# Subtest: model text layout keeps every model at every card height
+ok 109 - model text layout keeps every model at every card height
+  ---
+  duration_ms: 0.705757
+  type: 'test'
+  ...
+# Subtest: three-source compact Volcengine card shows six models as two columns by three rows
+ok 110 - three-source compact Volcengine card shows six models as two columns by three rows
+  ---
+  duration_ms: 0.584654
+  type: 'test'
+  ...
+# Subtest: renderer keeps only models with latest token usage and sorts by today tokens
+ok 111 - renderer keeps only models with latest token usage and sorts by today tokens
+  ---
+  duration_ms: 0.492124
+  type: 'test'
+  ...
+# Subtest: packaged extractor disables legacy Volcengine interception before reading ReactECharts
+ok 112 - packaged extractor disables legacy Volcengine interception before reading ReactECharts
+  ---
+  duration_ms: 0.556001
+  type: 'test'
+  ...
+# Subtest: Volcengine opens on the Agent Plan Enterprise route
+ok 113 - Volcengine opens on the Agent Plan Enterprise route
+  ---
+  duration_ms: 1.293355
+  type: 'test'
+  ...
+# Subtest: desktop refresh preserves the selected Volcengine SPA view
+ok 114 - desktop refresh preserves the selected Volcengine SPA view
+  ---
+  duration_ms: 0.362238
+  type: 'test'
+  ...
+# Subtest: the extractor still exposes an in-page sync hook
+ok 115 - the extractor still exposes an in-page sync hook
+  ---
+  duration_ms: 0.313594
+  type: 'test'
+  ...
+# Subtest: today-only Volcengine display excludes monthly-only and zero-latest models
+ok 116 - today-only Volcengine display excludes monthly-only and zero-latest models
+  ---
+  duration_ms: 2.157642
+  type: 'test'
+  ...
+# Subtest: Kindle 7 three-source layout gives Volcengine more room and readable type
+ok 117 - Kindle 7 three-source layout gives Volcengine more room and readable type
+  ---
+  duration_ms: 2.546189
+  type: 'test'
+  ...
+# Subtest: generated renderer labels and displays latest token values
+ok 118 - generated renderer labels and displays latest token values
+  ---
+  duration_ms: 9.640994
+  type: 'test'
+  ...
+# Subtest: background refresh reloads stateless sources but preserves the Volcengine view
+ok 119 - background refresh reloads stateless sources but preserves the Volcengine view
+  ---
+  duration_ms: 1.677906
+  type: 'test'
+  ...
+# Subtest: hiding a source window does not summon the dashboard
+ok 120 - hiding a source window does not summon the dashboard
+  ---
+  duration_ms: 0.397571
+  type: 'test'
+  ...
+# Subtest: release extractor contains no close-on-reload handler
+ok 121 - release extractor contains no close-on-reload handler
+  ---
+  duration_ms: 0.237099
+  type: 'test'
+  ...
+# Subtest: repository keeps one reusable build-to-release workflow
+ok 122 - repository keeps one reusable build-to-release workflow
+  ---
+  duration_ms: 5.328795
+  type: 'test'
+  ...
+1..122
+# tests 122
+# suites 0
+# pass 121
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1186.135961

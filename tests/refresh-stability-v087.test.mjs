@@ -16,10 +16,12 @@ test('PNG generation uses the proven v0.6.2 direct encoder with single-flight pu
   assert.doesNotMatch(app, /requestAnimationFrame|publishDirty|publishPromise/);
 });
 
-test('manual refresh returns to the stable single-flight flow', () => {
+test('manual refresh is single-flight and always releases the UI', () => {
   assert.match(app, /refreshInFlight/);
-  assert.match(app, /await invoke\?\.\('refresh_sources'\)/);
-  assert.doesNotMatch(app, /REFRESH_COMMAND_TIMEOUT_MS|REFRESH_COOLDOWN_MS|invokeWithTimeout/);
+  assert.match(app, /REFRESH_COMMAND_TIMEOUT_MS = 15_000/);
+  assert.match(app, /Promise\.race/);
+  assert.match(app, /invokeRefreshSources\(\)/);
+  assert.match(app, /clearTimeout\(timer\)/);
   assert.match(app, /正在重新载入数据源/);
 });
 
