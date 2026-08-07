@@ -1,0 +1,49 @@
+name: Patch refresh scheduler deadlock
+
+on:
+  push:
+    branches: [fix/refresh-scheduler-deadlock-v099]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/refresh-scheduler-deadlock-v099
+      - name: Release refresh mutex before scheduled batch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src-tauri/src/lib.rs')
+          text = path.read_text()
+          old = '''        let result = refresh.changed.wait_timeout(guard, wait);
+                  let Ok((_guard, timeout)) = result else {
+                      return;
+                  };
+                  if timeout.timed_out() && !desktop::is_paused(&app) {
+          '''
+          new = '''        let result = refresh.changed.wait_timeout(guard, wait);
+                  let Ok((guard, timeout)) = result else {
+                      return;
+                  };
+                  let timed_out = timeout.timed_out();
+                  drop(guard);
+                  if timed_out && !desktop::is_paused(&app) {
+          '''
+          if old not in text:
+              raise SystemExit('scheduler snippet not found or already patched')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src-tauri/src/lib.rs
+          git commit -m "fix: release refresh lock before scheduled reload"
+          git push origin HEAD:fix/refresh-scheduler-deadlock-v099
