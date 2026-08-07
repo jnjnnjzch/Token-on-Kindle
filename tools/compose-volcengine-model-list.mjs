@@ -14,6 +14,54 @@ function replaceBlock(input, startMarker, endMarker, replacement, label) {
   return `${input.slice(0, start)}${replacement.trimEnd()}\n\n${input.slice(end)}`;
 }
 
+const kindleLayout = `export const KINDLE_LAYOUT = Object.freeze({
+  width: 600,
+  height: 800,
+  contentTop: 70,
+  contentBottom: 706,
+  unlockTop: 716,
+  unlockHeight: 84
+});`;
+
+const preferredLayout = `function preferredHeights(sources) {
+  if (sources.length === 1) return [KINDLE_LAYOUT.contentBottom - KINDLE_LAYOUT.contentTop];
+  if (sources.length === 2 && sources.includes('deepseek')) {
+    return sources.map(source => source === 'deepseek' ? 382 : 244);
+  }
+  if (sources.length === 2) return [313, 313];
+  return sources.map(source => ({ codex: 154, deepseek: 340, volcengine: 134 })[source]);
+}`;
+
+const codexRenderer = `function drawCodexQuotaRow(ctx, quota, x, y, width, height, label, primary = false) {
+  const remaining = quotaRemaining(quota);
+  const used = numericValue(quota?.usedPercent) ?? (remaining == null ? null : 100 - remaining);
+  const labelSize = primary ? 12 : 10.5;
+  const valueSize = primary ? 28 : 17;
+  drawText(ctx, label, x + 12, y + 3, labelSize, 800, 'left', PALETTE.dark);
+  drawText(ctx, quota ? formatPercent(remaining) : '—', x + width - 12, y + (primary ? -2 : 1), valueSize, 850, 'right');
+  if (!quota) return;
+
+  const barY = y + (primary ? 29 : 20);
+  drawBar(ctx, x + 12, barY, width - 24, primary ? 9 : 5, remaining == null ? 0 : remaining / 100);
+  const detailY = barY + (primary ? 13 : 8);
+  drawText(ctx, used == null ? '已用 —' : `已用 ${formatPercent(used)}`, x + 12, detailY, primary ? 9 : 7.5, 650, 'left', PALETTE.dark);
+  if (quota?.resetText) {
+    drawText(ctx, shorten(quota.resetText, primary ? 34 : 28), x + width - 12, detailY, primary ? 9 : 7.5, 600, 'right', PALETTE.dark);
+  }
+}
+
+function drawCodex(ctx, codex, box) {
+  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
+  drawCardTitle(ctx, 'CODEX', box);
+  const { weekly, hourly } = selectCodexQuotas(codex);
+  const bodyY = box.y + 40;
+  const hourlyHeight = 36;
+  const weeklyY = bodyY + hourlyHeight + 2;
+  drawCodexQuotaRow(ctx, hourly, box.x, bodyY, box.width, hourlyHeight, '5 小时额度', false);
+  drawLine(ctx, box.x + 12, weeklyY - 1, box.x + box.width - 12, weeklyY - 1, 1, PALETTE.light);
+  drawCodexQuotaRow(ctx, weekly, box.x, weeklyY, box.width, box.y + box.height - weeklyY - 6, '周额度', true);
+}`;
+
 const layout = `export function volcengineModelLayoutPlan(boxHeight, modelCount) {
   const count = Math.max(0, Number(modelCount) || 0);
   if (!count) return { hasModels: false, quotaHeight: Math.max(0, boxHeight - 45), columns: 0, rows: 0, capacity: 0, visibleCount: 0, overflowCount: 0, rowHeight: 0, fontSize: 0 };
@@ -86,19 +134,43 @@ const timeFormatter = `const formatTime = value => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };`;
 
+const headerFooter = `function sourceSyncText(state, sources) {
+  const labels = { codex: 'C', deepseek: 'D', volcengine: 'V' };
+  return sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt || state[source]?.syncRequestedAt)}`).join('  ·  ');
+}
+
+function drawHeader(ctx, state, sources) {
+  drawText(ctx, 'AI 用量', 28, 14, 36, 850);
+  drawText(ctx, sourceSyncText(state, sources), 572, 28, 11.5, 700, 'right', PALETTE.dark);
+  drawLine(ctx, 28, 59, 572, 59, 3);
+}
+
+function drawFooter(ctx) {
+  ctx.fillStyle = PALETTE.unlock;
+  ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight);
+  drawLine(ctx, 0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockTop, 2, PALETTE.ink);
+}`;
+
+source = replaceBlock(source, 'export const KINDLE_LAYOUT = Object.freeze({', 'export const SOURCE_ORDER = Object.freeze(', kindleLayout, 'Kindle canvas layout');
+source = replaceBlock(source, 'function preferredHeights(sources) {', 'export function sourceLayoutBoxes(displaySources = {}) {', preferredLayout, 'Source layout heights');
+source = replaceBlock(source, 'function drawQuota(ctx, quota, x, y, width, height, fallbackLabel) {', 'function modelMetrics(deepseek, key) {', codexRenderer, 'Codex quota layout');
 source = replaceBlock(source, 'export function volcengineModelLayoutPlan(boxHeight, modelCount) {', 'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {', layout, 'Volcengine layout');
 source = replaceBlock(source, marker, 'function drawVolcengine(ctx, volcengine, box) {', textList, 'Volcengine model list');
-source = replaceBlock(source, 'const formatTime = value => {', 'const shorten = (value, maxLength = 24) => {', timeFormatter, 'Footer sync time formatter');
+source = replaceBlock(source, 'const formatTime = value => {', 'const shorten = (value, maxLength = 24) => {', timeFormatter, 'Sync time formatter');
+source = replaceBlock(source, 'function drawHeader(ctx, sources) {', 'export function renderKindleDashboard(ctx, state = {}) {', headerFooter, 'Kindle header and footer');
 
-const oldFooter = "const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.syncRequestedAt || state[source]?.capturedAt)}`).join('  ·  ');";
-const newFooter = "const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt || state[source]?.syncRequestedAt)}`).join('  ·  ');";
-if (!source.includes(oldFooter) && !source.includes(newFooter)) throw new Error('Footer sync time source changed');
-source = source.replace(oldFooter, newFooter);
-
+if (source.includes('drawHeader(ctx, sources);')) source = source.replace('drawHeader(ctx, sources);', 'drawHeader(ctx, state, sources);');
+if (!source.includes('drawHeader(ctx, state, sources);')) throw new Error('Dashboard must pass state into the compact header');
+if (!source.includes("contentTop: 70")) throw new Error('Portrait dashboard content should start below the compact header');
+if (!source.includes("contentBottom: 706")) throw new Error('Dashboard should reclaim the old footer timestamp area');
+if (!source.includes("'5 小时额度'")) throw new Error('Codex must reserve a 5-hour quota row for future API support');
+if (!source.includes("quota ? formatPercent(remaining) : '—'")) throw new Error('Missing 5-hour quota must render as a compact placeholder');
+if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Header sync time must prefer successful capture time');
+if (!source.includes("/^\\d{10}$/.test(raw)")) throw new Error('Sync time must support Unix-second timestamps');
+if (!source.includes("ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight)")) throw new Error('Kindle unlock shelf must remain intact');
 if (!source.includes("drawText(ctx, '今日模型 TOKEN'")) throw new Error('Volcengine today heading missing');
 if (!source.includes("'今日调用 ' + models.length + ' 个'")) throw new Error('Volcengine today count missing');
 if (!source.includes('formatTokens(model.latestTokens)')) throw new Error('Volcengine latest token value missing');
-if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Footer must prefer successful capture time');
-if (!source.includes("/^\\d{10}$/.test(raw)")) throw new Error('Footer must support Unix-second timestamps');
+
 fs.writeFileSync(rendererPath, source);
-console.log('Composed Kindle renderer fixes and today-only Volcengine model list');
+console.log('Composed compact portrait Kindle renderer with top sync times and future 5h Codex quota support');
