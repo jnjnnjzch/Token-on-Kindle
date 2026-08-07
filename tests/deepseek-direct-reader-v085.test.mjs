@@ -14,7 +14,7 @@ test('DeepSeek uses the Platform page APIs first and keeps page fallback isolate
   assert.match(reader, /primarySource: 'platform-internal-api'/);
   assert.match(reader, /legacySync/);
   assert.doesNotMatch(reader, /MutationObserver/);
-  assert.match(built, /TOKEN-ON-KINDLE DIRECT READERS BUILD/);
+  assert.match(built, /TOKEN-ON-KINDLE DIRECT API WORKERS BUILD/);
   assert.match(built, /platform-internal-api/);
   assert.match(built, /__TOKEN_ON_KINDLE_DEEPSEEK_DIRECT_READER__/);
 });
