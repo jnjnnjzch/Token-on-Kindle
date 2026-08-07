@@ -9,12 +9,14 @@ const base = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url
 const compose = fs.readFileSync(new URL('../tools/compose-extractor.mjs', import.meta.url), 'utf8');
 const built = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
 
-test('refresh attempts every source and reports partial failures', () => {
+test('refresh attempts every source through the native batch and reports partial failures', () => {
   assert.match(rust, /\("codex", "Codex", true\)/);
   assert.match(rust, /\("deepseek", "DeepSeek", true\)/);
-  assert.match(rust, /\("volcengine", "火山方舟", false\)/);
+  assert.match(rust, /\("volcengine", "火山方舟", true\)/);
+  assert.doesNotMatch(rust, /\("volcengine", "火山方舟", false\)/);
   assert.match(rust, /failed\.push\(format!\("\{source_name\}：\{error\}"\)\)/);
   assert.match(rust, /Ok\(RefreshSummary \{ refreshed, failed \}\)/);
+  assert.match(rust, /location\.reload\(\)/);
   assert.match(rust, /typeof window\.__TOKEN_ON_KINDLE_SYNC__ === 'function'/);
 });
 
