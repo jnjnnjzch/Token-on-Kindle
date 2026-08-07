@@ -30,7 +30,7 @@ test('all seven non-empty source combinations receive bounded Kindle layout boxe
     for (const box of boxes) {
       assert.equal(box.x, 28);
       assert.equal(box.width, 544);
-      assert.ok(box.height >= 134);
+      assert.ok(box.height >= 146);
       assert.ok(box.y >= 70);
       assert.ok(box.y + box.height <= 706.001);
     }
@@ -43,7 +43,7 @@ test('DeepSeek always receives enough height for Flash and Pro details', () => {
     const deepseek = sourceLayoutBoxes(display).find(box => box.source === 'deepseek');
     assert.ok(deepseek.height >= DEEPSEEK_DETAIL_MIN_HEIGHT);
   }
-  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 340);
+  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 332);
   assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: false })[1].height, 382);
 });
 
