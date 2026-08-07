@@ -14,15 +14,15 @@ test('today-only Volcengine display excludes monthly-only and zero-latest models
   assert.deepEqual(models.map(model => model.latestTokens), [120, 12]);
 });
 
-test('three-source portrait layout preserves Volcengine room and readable type', () => {
+test('three-source portrait layout gives Volcengine more room for readable model type', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [146, 332, 150]);
+  assert.deepEqual(boxes.map(box => box.height), [124, 318, 188]);
   assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
-  const plan = volcengineModelLayoutPlan(150, 8);
+  const plan = volcengineModelLayoutPlan(boxes.at(-1).height, 8);
   assert.equal(plan.columns, 2);
   assert.equal(plan.rows, 4);
-  assert.ok(plan.fontSize >= 8.5);
-  assert.ok(plan.modelAreaHeight >= 50);
+  assert.ok(plan.fontSize >= 12.5);
+  assert.ok(plan.modelAreaHeight >= 70);
 });
 
 test('generated renderer labels and displays latest token values', async () => {

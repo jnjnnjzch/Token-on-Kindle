@@ -40,7 +40,7 @@ test('legacy response parser still selects the newest payload instead of summing
   assert.equal(parsed.diagnostics.selectedOrder, 2);
 });
 
-test('model text layout keeps every model at every card height', () => {
+test('model text layout keeps every model while preferring fewer wider columns for larger type', () => {
   const single = volcengineModelLayoutPlan(584, 1);
   const compact = volcengineModelLayoutPlan(170, 8);
   const medium = volcengineModelLayoutPlan(226, 4);
@@ -48,25 +48,27 @@ test('model text layout keeps every model at every card height', () => {
   assert.equal(single.columns, 1);
   assert.equal(compact.columns, 2);
   assert.equal(medium.columns, 2);
-  assert.equal(tall.columns, 3);
+  assert.equal(tall.columns, 2, 'eight models should remain in two wider columns instead of shrinking into three');
   for (const [plan, count, height] of [[compact, 8, 170], [medium, 4, 226], [tall, 8, 584]]) {
     assert.equal(plan.visibleCount, count);
     assert.equal(plan.capacity, count);
     assert.equal(plan.overflowCount, 0);
     assert.ok(plan.rows * plan.columns >= count);
-    assert.ok(plan.fontSize >= 7);
-    assert.ok(plan.quotaHeight + plan.modelAreaHeight + plan.sectionGap + 47 <= height + 2);
+    assert.ok(plan.fontSize >= 12.5);
+    assert.ok(plan.quotaHeight + plan.modelAreaHeight + plan.sectionGap + 38 <= height + 2);
   }
 });
 
-test('three-source compact Volcengine card preserves six models as two columns by three rows', () => {
+test('three-source Volcengine section gives six models two readable columns by three rows', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [146, 332, 150]);
-  const compact = volcengineModelLayoutPlan(150, 6);
+  assert.deepEqual(boxes.map(box => box.height), [124, 318, 188]);
+  const volcengineHeight = boxes.at(-1).height;
+  const compact = volcengineModelLayoutPlan(volcengineHeight, 6);
   assert.equal(compact.columns, 2);
   assert.equal(compact.rows, 3);
   assert.equal(compact.visibleCount, 6);
   assert.equal(compact.overflowCount, 0);
+  assert.ok(compact.fontSize >= 12.5);
   assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
   assert.match(renderer, /TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST/);
   assert.match(renderer, /今日模型 TOKEN/);
