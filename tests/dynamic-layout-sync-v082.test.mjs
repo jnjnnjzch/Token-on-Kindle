@@ -19,17 +19,24 @@ test('balanced vertical flow keeps internal gaps equal and bounded', () => {
   assert.ok(spacious.offset > 9, 'surplus space should center the content group instead of creating one giant gap');
 });
 
-test('DeepSeek summary and model sections adapt across all card heights', () => {
+test('DeepSeek summary and full-width model rows adapt across all source heights', () => {
   const compact = deepSeekLayoutPlan(294);
   const medium = deepSeekLayoutPlan(348);
   const full = deepSeekLayoutPlan(584);
-  assert.deepEqual(compact, { bodyHeight: 250, summaryHeight: 85, sectionGap: 8, modelHeight: 157 });
-  assert.ok(medium.summaryHeight > compact.summaryHeight);
+
+  assert.equal(compact.bodyHeight, 260);
+  assert.ok(compact.summaryHeight >= 78 && compact.summaryHeight <= 86);
+  assert.ok(compact.modelHeight >= 82);
+  assert.ok(compact.summaryHeight + compact.sectionGap + compact.modelHeight * 2 <= compact.bodyHeight);
+
+  assert.ok(medium.summaryHeight >= compact.summaryHeight);
   assert.ok(medium.modelHeight > compact.modelHeight);
-  assert.equal(full.summaryHeight, 112);
-  assert.ok(full.modelHeight > 400);
-  assert.match(renderer, /balancedVerticalFlow\(cellHeight/);
-  assert.match(renderer, /balancedVerticalFlow\(height, \[headerHeight, totalHeight, breakdownHeight, cacheHeight\]/);
+  assert.equal(full.summaryHeight, 86, 'summary should stop growing so spare height goes to readable model rows');
+  assert.ok(full.modelHeight > medium.modelHeight);
+
+  assert.match(renderer, /drawMetricGrid\(ctx, metrics,[\s\S]*?, 3\);/);
+  assert.match(renderer, /drawModelRow\(ctx, flash, 'V4 FLASH'/);
+  assert.match(renderer, /drawModelRow\(ctx, pro, 'V4 PRO'/);
 });
 
 test('all sources share one native refresh batch and no page owns a recurring timer', () => {
