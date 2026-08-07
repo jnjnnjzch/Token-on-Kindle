@@ -151,13 +151,20 @@ function drawFooter(ctx) {
   drawLine(ctx, 0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockTop, 2, PALETTE.ink);
 }`;
 
+const codexStart = source.includes('function drawCodexQuotaRow(ctx, quota, x, y, width, height, label, primary = false) {')
+  ? 'function drawCodexQuotaRow(ctx, quota, x, y, width, height, label, primary = false) {'
+  : 'function drawQuota(ctx, quota, x, y, width, height, fallbackLabel) {';
+const headerStart = source.includes('function sourceSyncText(state, sources) {')
+  ? 'function sourceSyncText(state, sources) {'
+  : 'function drawHeader(ctx, sources) {';
+
 source = replaceBlock(source, 'export const KINDLE_LAYOUT = Object.freeze({', 'export const SOURCE_ORDER = Object.freeze(', kindleLayout, 'Kindle canvas layout');
 source = replaceBlock(source, 'function preferredHeights(sources) {', 'export function sourceLayoutBoxes(displaySources = {}) {', preferredLayout, 'Source layout heights');
-source = replaceBlock(source, 'function drawQuota(ctx, quota, x, y, width, height, fallbackLabel) {', 'function modelMetrics(deepseek, key) {', codexRenderer, 'Codex quota layout');
+source = replaceBlock(source, codexStart, 'function modelMetrics(deepseek, key) {', codexRenderer, 'Codex quota layout');
 source = replaceBlock(source, 'export function volcengineModelLayoutPlan(boxHeight, modelCount) {', 'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {', layout, 'Volcengine layout');
 source = replaceBlock(source, marker, 'function drawVolcengine(ctx, volcengine, box) {', textList, 'Volcengine model list');
 source = replaceBlock(source, 'const formatTime = value => {', 'const shorten = (value, maxLength = 24) => {', timeFormatter, 'Sync time formatter');
-source = replaceBlock(source, 'function drawHeader(ctx, sources) {', 'export function renderKindleDashboard(ctx, state = {}) {', headerFooter, 'Kindle header and footer');
+source = replaceBlock(source, headerStart, 'export function renderKindleDashboard(ctx, state = {}) {', headerFooter, 'Kindle header and footer');
 
 if (source.includes('drawHeader(ctx, sources);')) source = source.replace('drawHeader(ctx, sources);', 'drawHeader(ctx, state, sources);');
 if (!source.includes('drawHeader(ctx, state, sources);')) throw new Error('Dashboard must pass state into the compact header');
