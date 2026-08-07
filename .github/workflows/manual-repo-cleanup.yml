@@ -1,0 +1,89 @@
+name: One-off repository cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/manual-repo-cleanup.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove obsolete work branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            'agent/fix-background-refresh-v097'
+            'agent/fix-long-running-sync-v095'
+            'agent/fix-main-window-startup-v096'
+            'agent/readme-v0.9.4'
+            'agent/v0.8.7-refresh-stability'
+            'agent/v0.8.8-restore-stable-refresh'
+            'agent/v0.9.0-navigation-bridge'
+            'agent/v0.9.1-restore-title-bridge'
+            'agent/v0.9.2-fix-null-source-render'
+            'agent/v0.9.3-volcengine-today-kindle7'
+            'agent/v0.9.4-preserve-volcengine-view'
+            'agent/volcengine-api-worker-v098'
+            'agent/volcengine-debug-probe-v097'
+            'build/v098-windows-validation'
+            'fix/workflow-200-v098'
+          )
+          for branch in "${branches[@]}"; do
+            if gh api "repos/$GITHUB_REPOSITORY/branches/$branch" >/dev/null 2>&1; then
+              echo "Deleting obsolete branch: $branch"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch"
+            fi
+          done
+
+      - name: Keep only requested releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | [.id, .tag_name] | @tsv' | while IFS=$'\t' read -r release_id tag; do
+            [[ -n "$release_id" && -n "$tag" ]] || continue
+            case "$tag" in
+              v0.6.2|v0.9.9|v0.9.10) continue ;;
+            esac
+            echo "Deleting old release: $tag"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+          done
+
+      - name: Prune old workflow runs but keep recent history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t run_ids < <(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq '.workflow_runs[].id')
+          keep=40
+          echo "Found ${#run_ids[@]} runs; keeping newest $keep plus current run."
+          for ((i=keep; i<${#run_ids[@]}; i++)); do
+            run_id="${run_ids[$i]}"
+            [[ "$run_id" == "$GITHUB_RUN_ID" ]] && continue
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" || true
+          done
+
+      - name: Remove this one-off workflow from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/manual-repo-cleanup.yml
+          git commit -m 'chore: remove one-off cleanup workflow'
+          git push origin HEAD:main
