@@ -83,8 +83,11 @@ test('Volcengine production reader is a session API worker without DOM or EChart
   assert.match(reader, /credentials:\s*'include'/);
   assert.match(reader, /location\.reload\(\)/);
   assert.match(reader, /location\.replace\(WORKER_URL\)/);
+
+  // DeepSeek still has its own DOM/ECharts compatibility path in the composed
+  // extractor. The Volcengine worker itself must remain free of those readers.
+  assert.doesNotMatch(reader, /模型调用明细|_echarts_instance_|getEchartsInstance|collectVolcengineWindow|usageCard/);
   for (const source of [reader, built]) {
-    assert.doesNotMatch(source, /模型调用明细|_echarts_instance_|getEchartsInstance|collectVolcengineWindow|usageCard/);
     assert.doesNotMatch(source, /__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__/);
     assert.doesNotMatch(source, /__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__/);
     assert.doesNotMatch(source, /__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__/);
