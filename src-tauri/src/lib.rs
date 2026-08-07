@@ -350,7 +350,7 @@ fn reload_sources(app: &AppHandle) -> Result<RefreshSummary, String> {
     for (source, source_name, reload_page) in [
         ("codex", "Codex", true),
         ("deepseek", "DeepSeek", true),
-        ("volcengine", "火山方舟", false),
+        ("volcengine", "火山方舟", true),
     ] {
         let (window, created) = match ensure_source_window(app, source) {
             Ok(result) => result,
