@@ -29,7 +29,7 @@ const preferredLayout = `function preferredHeights(sources) {
     return sources.map(source => source === 'deepseek' ? 382 : 244);
   }
   if (sources.length === 2) return [313, 313];
-  return sources.map(source => ({ codex: 154, deepseek: 340, volcengine: 134 })[source]);
+  return sources.map(source => ({ codex: 146, deepseek: 332, volcengine: 150 })[source]);
 }`;
 
 const codexRenderer = `function drawCodexQuotaRow(ctx, quota, x, y, width, height, label, primary = false) {
@@ -167,9 +167,12 @@ source = replaceBlock(source, 'const formatTime = value => {', 'const shorten = 
 source = replaceBlock(source, headerStart, 'export function renderKindleDashboard(ctx, state = {}) {', headerFooter, 'Kindle header and footer');
 
 if (source.includes('drawHeader(ctx, sources);')) source = source.replace('drawHeader(ctx, sources);', 'drawHeader(ctx, state, sources);');
+if (source.includes('const compact = height < 184;')) source = source.replace('const compact = height < 184;', 'const compact = height < 174;');
 if (!source.includes('drawHeader(ctx, state, sources);')) throw new Error('Dashboard must pass state into the compact header');
 if (!source.includes('contentTop: 70')) throw new Error('Portrait dashboard content should start below the compact header');
 if (!source.includes('contentBottom: 706')) throw new Error('Dashboard should reclaim the old footer timestamp area');
+if (!source.includes('codex: 146, deepseek: 332, volcengine: 150')) throw new Error('Three-source layout must preserve Volcengine space while enlarging DeepSeek');
+if (!source.includes('const compact = height < 174;')) throw new Error('DeepSeek model cards should use larger typography when the reclaimed space allows it');
 if (!source.includes("'5 小时额度'")) throw new Error('Codex must reserve a 5-hour quota row for future API support');
 if (!source.includes("quota ? formatPercent(remaining) : '—'")) throw new Error('Missing 5-hour quota must render as a compact placeholder');
 if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Header sync time must prefer successful capture time');
