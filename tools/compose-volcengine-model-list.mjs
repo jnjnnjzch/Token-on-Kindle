@@ -33,13 +33,13 @@ const preferredLayout = `function preferredHeights(sources) {
 }`;
 
 const codexRenderer = `function drawCodexQuotaRow(ctx, quota, x, y, width, height, label, primary = false) {
+  if (!quota) return;
   const remaining = quotaRemaining(quota);
   const used = numericValue(quota?.usedPercent) ?? (remaining == null ? null : 100 - remaining);
   const labelSize = primary ? 12 : 10.5;
   const valueSize = primary ? 28 : 17;
   drawText(ctx, label, x + 12, y + 3, labelSize, 800, 'left', PALETTE.dark);
-  drawText(ctx, quota ? formatPercent(remaining) : '—', x + width - 12, y + (primary ? -2 : 1), valueSize, 850, 'right');
-  if (!quota) return;
+  drawText(ctx, formatPercent(remaining), x + width - 12, y + (primary ? -2 : 1), valueSize, 850, 'right');
 
   const barY = y + (primary ? 29 : 20);
   drawBar(ctx, x + 12, barY, width - 24, primary ? 9 : 5, remaining == null ? 0 : remaining / 100);
@@ -51,15 +51,28 @@ const codexRenderer = `function drawCodexQuotaRow(ctx, quota, x, y, width, heigh
 }
 
 function drawCodex(ctx, codex, box) {
-  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);
+  drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, null, 0);
   drawCardTitle(ctx, 'CODEX', box);
   const { weekly, hourly } = selectCodexQuotas(codex);
   const bodyY = box.y + 40;
-  const hourlyHeight = 36;
-  const weeklyY = bodyY + hourlyHeight + 2;
-  drawCodexQuotaRow(ctx, hourly, box.x, bodyY, box.width, hourlyHeight, '5 小时额度', false);
-  drawLine(ctx, box.x + 12, weeklyY - 1, box.x + box.width - 12, weeklyY - 1, 1, PALETTE.light);
-  drawCodexQuotaRow(ctx, weekly, box.x, weeklyY, box.width, box.y + box.height - weeklyY - 6, '周额度', true);
+  const bodyHeight = box.height - 46;
+
+  if (!weekly && !hourly) {
+    drawText(ctx, '尚未同步', box.x + 14, bodyY + 12, 22, 850);
+    return;
+  }
+
+  if (weekly && hourly) {
+    const hourlyHeight = 36;
+    const weeklyY = bodyY + hourlyHeight + 2;
+    drawCodexQuotaRow(ctx, hourly, box.x, bodyY, box.width, hourlyHeight, quotaLabel(hourly, '5 小时额度'), false);
+    drawLine(ctx, box.x + 12, weeklyY - 1, box.x + box.width - 12, weeklyY - 1, 1, PALETTE.light);
+    drawCodexQuotaRow(ctx, weekly, box.x, weeklyY, box.width, box.y + box.height - weeklyY - 6, '周额度', true);
+    return;
+  }
+
+  const quota = weekly || hourly;
+  drawCodexQuotaRow(ctx, quota, box.x, bodyY + 4, box.width, bodyHeight, weekly ? '周额度' : quotaLabel(hourly, '小时额度'), true);
 }`;
 
 const layout = `export function volcengineModelLayoutPlan(boxHeight, modelCount) {
@@ -168,13 +181,19 @@ source = replaceBlock(source, headerStart, 'export function renderKindleDashboar
 
 if (source.includes('drawHeader(ctx, sources);')) source = source.replace('drawHeader(ctx, sources);', 'drawHeader(ctx, state, sources);');
 if (source.includes('const compact = height < 184;')) source = source.replace('const compact = height < 184;', 'const compact = height < 174;');
+source = source.replaceAll('drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.paper, PALETTE.ink, 2);', 'drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.paper, null, 0);');
+source = source.replaceAll('drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, PALETTE.ink, 2);', 'drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, null, 0);');
+source = source.replaceAll('drawBox(ctx, x, y, width, height, PALETTE.white, PALETTE.dark, 1.5);', 'drawBox(ctx, x, y, width, height, PALETTE.white, null, 0);');
+
 if (!source.includes('drawHeader(ctx, state, sources);')) throw new Error('Dashboard must pass state into the compact header');
 if (!source.includes('contentTop: 70')) throw new Error('Portrait dashboard content should start below the compact header');
 if (!source.includes('contentBottom: 706')) throw new Error('Dashboard should reclaim the old footer timestamp area');
 if (!source.includes('codex: 146, deepseek: 332, volcengine: 150')) throw new Error('Three-source layout must preserve Volcengine space while enlarging DeepSeek');
-if (!source.includes('const compact = height < 174;')) throw new Error('DeepSeek model cards should use larger typography when the reclaimed space allows it');
-if (!source.includes("'5 小时额度'")) throw new Error('Codex must reserve a 5-hour quota row for future API support');
-if (!source.includes("quota ? formatPercent(remaining) : '—'")) throw new Error('Missing 5-hour quota must render as a compact placeholder');
+if (!source.includes('const compact = height < 174;')) throw new Error('DeepSeek model sections should use larger typography when the reclaimed space allows it');
+if (!source.includes("if (!weekly && !hourly)")) throw new Error('Codex must handle missing quota data without rendering fake rows');
+if (source.includes("quota ? formatPercent(remaining) : '—'")) throw new Error('Missing Codex quota rows must not render placeholder values');
+if (!source.includes("drawBox(ctx, box.x, box.y, box.width, box.height, PALETTE.white, null, 0);")) throw new Error('Top-level Kindle sections should be borderless');
+if (!source.includes("drawBox(ctx, x, y, width, height, PALETTE.white, null, 0);")) throw new Error('DeepSeek model sections should be borderless');
 if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Header sync time must prefer successful capture time');
 if (!source.includes("/^\\d{10}$/.test(raw)")) throw new Error('Sync time must support Unix-second timestamps');
 if (!source.includes('ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight)')) throw new Error('Kindle unlock shelf must remain intact');
@@ -183,4 +202,4 @@ if (!source.includes("'今日调用 ' + models.length + ' 个'")) throw new Erro
 if (!source.includes('formatTokens(model.latestTokens)')) throw new Error('Volcengine latest token value missing');
 
 fs.writeFileSync(rendererPath, source);
-console.log('Composed compact portrait Kindle renderer with top sync times and future 5h Codex quota support');
+console.log('Composed flat portrait Kindle renderer with top sync times and data-driven Codex quota rows');

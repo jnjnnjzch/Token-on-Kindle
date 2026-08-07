@@ -5,17 +5,18 @@ import { KINDLE_LAYOUT, renderKindleDashboard, selectCodexQuotas } from '../web/
 function recordingContext() {
   const texts = [];
   const fills = [];
+  const strokes = [];
   const noOp = () => {};
   const context = new Proxy({
     save: noOp,
     restore: noOp,
     setTransform: noOp,
     clearRect: noOp,
-    strokeRect: noOp,
     beginPath: noOp,
     moveTo: noOp,
     lineTo: noOp,
     stroke: noOp,
+    strokeRect(x, y, width, height) { strokes.push({ x, y, width, height }); },
     fillRect(x, y, width, height) { fills.push({ x, y, width, height }); },
     fillText(value, x, y) { texts.push({ value: String(value), x, y }); }
   }, {
@@ -24,7 +25,7 @@ function recordingContext() {
       return true;
     }
   });
-  return { context, texts, fills };
+  return { context, texts, fills, strokes };
 }
 
 function render(state) {
@@ -45,14 +46,14 @@ test('sync freshness moves from the old footer into the compact top header', () 
   assert.ok(sync.y < KINDLE_LAYOUT.contentTop, 'sync status should live in the top header');
 });
 
-test('Codex reserves a quiet 5h row even before OpenAI exposes the quota', () => {
+test('Codex does not render a 5h row when OpenAI did not return one', () => {
   const { texts } = render({
     codex: { quotas: [{ id: 'weekly', remainingPercent: 65, usedPercent: 35 }] },
     displaySources: { codex: true, deepseek: false, volcengine: false }
   });
-  assert.ok(texts.some(item => item.value === '5 小时额度'));
+  assert.ok(!texts.some(item => item.value === '5 小时额度'));
   assert.ok(texts.some(item => item.value === '周额度'));
-  assert.ok(texts.some(item => item.value === '—'));
+  assert.ok(texts.some(item => item.value === '65%'));
   assert.ok(!texts.some(item => /登录后自动识别|打开 Codex Analytics/.test(item.value)));
 });
 
@@ -64,9 +65,31 @@ test('Codex automatically renders a real 5h quota when one appears', () => {
     codex: { quotas: [weekly, hourly] },
     displaySources: { codex: true, deepseek: false, volcengine: false }
   });
+  assert.ok(texts.some(item => item.value === '5 小时额度'));
   assert.ok(texts.some(item => item.value === '82%'));
   assert.ok(texts.some(item => item.value === '已用 18%'));
   assert.ok(texts.some(item => item.value === '2小时后'));
+});
+
+test('top-level source sections and DeepSeek model sections avoid card frames', () => {
+  const sourceBox = { x: 28, y: KINDLE_LAYOUT.contentTop, width: 544, height: KINDLE_LAYOUT.contentBottom - KINDLE_LAYOUT.contentTop };
+  const codex = render({
+    codex: { quotas: [{ id: 'weekly', remainingPercent: 65, usedPercent: 35 }] },
+    displaySources: { codex: true, deepseek: false, volcengine: false }
+  });
+  assert.ok(!codex.strokes.some(item => item.x === sourceBox.x && item.y === sourceBox.y && item.width === sourceBox.width && item.height === sourceBox.height));
+
+  const deepseek = render({
+    deepseek: {
+      balance: 10,
+      models: {
+        flash: { tokens: 1000, cacheHitTokens: 700, cacheMissTokens: 200, outputTokens: 100, cacheRate: 77 },
+        pro: { tokens: 800, cacheHitTokens: 500, cacheMissTokens: 200, outputTokens: 100, cacheRate: 71 }
+      }
+    },
+    displaySources: { codex: false, deepseek: true, volcengine: false }
+  });
+  assert.ok(!deepseek.strokes.some(item => item.width > 250 && item.height > 100), 'large rectangular card borders should be removed');
 });
 
 test('the Kindle unlock shelf remains the bottom 84px gray system area', () => {
