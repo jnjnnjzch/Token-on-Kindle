@@ -73,7 +73,7 @@ function findText(texts, value) {
   return texts.find(item => item.value === value);
 }
 
-test('three-source Kindle layout spends reclaimed space on larger typography', () => {
+test('three-source Kindle layout keeps e-ink text readable without flattening hierarchy', () => {
   const recording = recordingContext();
   renderKindleDashboard(recording.context, sampleState());
   const { texts } = recording;
@@ -81,7 +81,7 @@ test('three-source Kindle layout spends reclaimed space on larger typography', (
   for (const heading of ['CODEX', 'DEEPSEEK', '火山方舟 AFP']) {
     const item = findText(texts, heading);
     assert.ok(item, `${heading} should be rendered`);
-    assert.ok(item.fontSize >= 20, `${heading} should use at least 20px type`);
+    assert.ok(item.fontSize >= 18, `${heading} should use at least 18px bold type`);
   }
 
   const codexRemaining = findText(texts, '65%');
@@ -93,16 +93,29 @@ test('three-source Kindle layout spends reclaimed space on larger typography', (
     assert.ok(item && item.fontSize >= 11, `${label} should stay readable`);
   }
 
-  for (const detail of ['未缓存 200.0K', '已缓存 900.0K', '输出 100.0K', '缓存率 81.8%']) {
-    const item = findText(texts, detail);
-    assert.ok(item && item.fontSize >= 12, `${detail} should remain visible in large text`);
+  for (const label of ['未缓存', '已缓存', '输出', '缓存率']) {
+    const items = texts.filter(item => item.value === label);
+    assert.equal(items.length, 2, `${label} should appear in both model cards`);
+    items.forEach(item => assert.ok(item.fontSize >= 12, `${label} should use readable e-ink type`));
   }
+  for (const detail of ['200.0K', '900.0K', '100.0K']) {
+    const item = findText(texts, detail);
+    assert.ok(item && item.fontSize >= 14, `${detail} should remain visible in larger type`);
+  }
+  const flashRate = findText(texts, '81.8%');
+  assert.ok(flashRate && flashRate.fontSize >= 14, 'cache percentage should not collapse to micro text');
 
   const flash = findText(texts, 'V4 FLASH');
   const pro = findText(texts, 'V4 PRO');
   assert.ok(flash && pro);
-  assert.ok(Math.abs(flash.x - pro.x) < 2, 'DeepSeek model sections should be full-width vertical rows, not narrow side-by-side cards');
-  assert.ok(pro.y - flash.y > 70, 'DeepSeek model rows should have enough vertical reading room');
+  assert.ok(Math.abs(flash.y - pro.y) < 2, 'Flash and Pro should share one horizontal row under DeepSeek');
+  assert.ok(pro.x - flash.x > 200, 'Flash and Pro should be visually distinct side-by-side subcards');
+
+  const flashTotal = findText(texts, '1.20M');
+  const proTotal = findText(texts, '340.0K');
+  assert.ok(flashTotal && proTotal);
+  assert.ok(flashTotal.fontSize >= 24 && proTotal.fontSize >= 24, 'model totals should remain prominent');
+  assert.ok(Math.abs(flashTotal.y - proTotal.y) < 2, 'model totals should align consistently');
 
   for (const name of ['doubao-a', 'doubao-b', 'doubao-c', 'doubao-d', 'doubao-e']) {
     const item = findText(texts, name);

@@ -61,7 +61,7 @@ test('model text layout keeps every model while preferring fewer wider columns f
 
 test('three-source Volcengine section gives six models two readable columns by three rows', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [124, 318, 188]);
+  assert.deepEqual(boxes.map(box => box.height), [116, 306, 188]);
   const volcengineHeight = boxes.at(-1).height;
   const compact = volcengineModelLayoutPlan(volcengineHeight, 6);
   assert.equal(compact.columns, 2);
@@ -69,7 +69,7 @@ test('three-source Volcengine section gives six models two readable columns by t
   assert.equal(compact.visibleCount, 6);
   assert.equal(compact.overflowCount, 0);
   assert.ok(compact.fontSize >= 12.5);
-  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
+  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 686);
   assert.match(renderer, /TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST/);
   assert.match(renderer, /今日模型 TOKEN/);
   assert.match(renderer, /今日调用/);

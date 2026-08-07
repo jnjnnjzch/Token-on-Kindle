@@ -31,7 +31,7 @@ test('all seven non-empty source combinations receive bounded Kindle layout boxe
     for (const box of boxes) {
       assert.equal(box.x, 28);
       assert.equal(box.width, 544);
-      assert.ok(box.height >= 120, 'even the most compact source should retain readable vertical space');
+      assert.ok(box.height >= 116, 'even the compact Codex section should retain readable vertical space');
       assert.ok(box.y >= KINDLE_LAYOUT.contentTop);
       assert.ok(box.y + box.height <= KINDLE_LAYOUT.contentBottom + 0.001);
     }
@@ -39,16 +39,16 @@ test('all seven non-empty source combinations receive bounded Kindle layout boxe
   }
 });
 
-test('DeepSeek always receives enough height for two full-width readable model rows', () => {
+test('DeepSeek always receives enough height for readable horizontal Flash and Pro cards', () => {
   for (const display of combinations.filter(item => item.deepseek)) {
     const deepseek = sourceLayoutBoxes(display).find(box => box.source === 'deepseek');
     assert.ok(deepseek.height >= DEEPSEEK_DETAIL_MIN_HEIGHT);
   }
-  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 318);
-  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: false })[1].height, 390);
+  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 306);
+  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: false })[1].height, 368);
 });
 
-test('DeepSeek model rows retain total, cache miss, cache hit, output, and cache rate', () => {
+test('DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate', () => {
   assert.deepEqual(modelTokenBreakdown({
     cacheMissTokens: 120,
     cacheHitTokens: 340,
@@ -58,10 +58,10 @@ test('DeepSeek model rows retain total, cache miss, cache hit, output, and cache
     cacheHitTokens: 340,
     outputTokens: 56
   });
-  for (const label of ['V4 FLASH', 'V4 PRO', '未缓存', '已缓存', '输出', '缓存率']) {
+  for (const label of ['V4 FLASH', 'V4 PRO', '总 Token', '未缓存', '已缓存', '输出', '缓存率']) {
     assert.match(renderer, new RegExp(label));
   }
-  assert.match(renderer, /'总 ' \+ formatTokens\(model\.tokens\) \+ ' TOKEN'/);
+  assert.match(renderer, /drawText\(ctx, formatTokens\(model\.tokens\), center/);
   assert.doesNotMatch(renderer, /box\.height < 245/);
 });
 

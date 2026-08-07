@@ -14,10 +14,10 @@ test('today-only Volcengine display excludes monthly-only and zero-latest models
   assert.deepEqual(models.map(model => model.latestTokens), [120, 12]);
 });
 
-test('three-source portrait layout gives Volcengine more room for readable model type', () => {
+test('three-source portrait layout gives Volcengine readable model type with breathing room above unlock shelf', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [124, 318, 188]);
-  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
+  assert.deepEqual(boxes.map(box => box.height), [116, 306, 188]);
+  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 686);
   const plan = volcengineModelLayoutPlan(boxes.at(-1).height, 8);
   assert.equal(plan.columns, 2);
   assert.equal(plan.rows, 4);

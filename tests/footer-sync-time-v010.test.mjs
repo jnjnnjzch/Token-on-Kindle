@@ -26,7 +26,7 @@ function recordingContext() {
   return { context, texts };
 }
 
-function footerFor(source) {
+function syncHeaderFor(source) {
   const { context, texts } = recordingContext();
   renderKindleDashboard(context, {
     codex: {
@@ -35,20 +35,20 @@ function footerFor(source) {
     },
     displaySources: { codex: true, deepseek: false, volcengine: false }
   });
-  return texts.find(value => value.startsWith('C '));
+  return texts.find(value => value.startsWith('Codex '));
 }
 
-test('Kindle footer shows the successful capture time after refresh', () => {
-  const footer = footerFor({
+test('Kindle header shows the successful capture time after refresh', () => {
+  const header = syncHeaderFor({
     capturedAt: '2026-08-07T03:40:00.000Z',
     syncRequestedAt: '1786074000'
   });
-  assert.ok(footer, 'Codex footer timestamp should be rendered');
-  assert.notEqual(footer, 'C 未同步');
+  assert.ok(header, 'Codex header timestamp should be rendered');
+  assert.notEqual(header, 'Codex 未同步');
 });
 
-test('Kindle footer accepts Unix-second sync timestamps as a fallback', () => {
-  const footer = footerFor({ syncRequestedAt: '1786074000' });
-  assert.ok(footer, 'Codex footer timestamp should be rendered');
-  assert.notEqual(footer, 'C 未同步');
+test('Kindle header accepts Unix-second sync timestamps as a fallback', () => {
+  const header = syncHeaderFor({ syncRequestedAt: '1786074000' });
+  assert.ok(header, 'Codex header timestamp should be rendered');
+  assert.notEqual(header, 'Codex 未同步');
 });

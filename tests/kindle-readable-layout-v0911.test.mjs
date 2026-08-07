@@ -34,16 +34,17 @@ function render(state) {
   return recording;
 }
 
-test('sync freshness moves from the old footer into the compact top header', () => {
+test('sync freshness is integrated into the compact top header with readable source names', () => {
   const { texts } = render({
     codex: { quotas: [{ id: 'weekly', remainingPercent: 65 }], capturedAt: '2026-08-07T04:25:00.000Z' },
     deepseek: { capturedAt: '2026-08-07T04:26:00.000Z' },
     volcengine: { capturedAt: '2026-08-07T04:27:00.000Z' },
     displaySources: { codex: true, deepseek: true, volcengine: true }
   });
-  const sync = texts.find(item => item.value.startsWith('C ') && item.value.includes('D ') && item.value.includes('V '));
-  assert.ok(sync, 'C/D/V sync times should be rendered as one compact status line');
+  const sync = texts.find(item => item.value.includes('Codex ') && item.value.includes('DeepSeek ') && item.value.includes('火山方舟 '));
+  assert.ok(sync, 'friendly source names and sync times should share one compact header line');
   assert.ok(sync.y < KINDLE_LAYOUT.contentTop, 'sync status should live in the top header');
+  assert.ok(!/^C\s/.test(sync.value), 'cryptic C/D/V prefixes should not return');
 });
 
 test('Codex does not render a 5h row when OpenAI did not return one', () => {
@@ -71,7 +72,7 @@ test('Codex automatically renders a real 5h quota when one appears', () => {
   assert.ok(texts.some(item => item.value === '2小时后'));
 });
 
-test('top-level source sections and DeepSeek model sections avoid card frames', () => {
+test('top-level source frames stay removed while two light DeepSeek subcards preserve hierarchy', () => {
   const sourceBox = { x: 28, y: KINDLE_LAYOUT.contentTop, width: 544, height: KINDLE_LAYOUT.contentBottom - KINDLE_LAYOUT.contentTop };
   const codex = render({
     codex: { quotas: [{ id: 'weekly', remainingPercent: 65, usedPercent: 35 }] },
@@ -89,7 +90,10 @@ test('top-level source sections and DeepSeek model sections avoid card frames', 
     },
     displaySources: { codex: false, deepseek: true, volcengine: false }
   });
-  assert.ok(!deepseek.strokes.some(item => item.width > 250 && item.height > 100), 'large rectangular card borders should be removed');
+  assert.ok(!deepseek.strokes.some(item => item.x === sourceBox.x && item.y === sourceBox.y && item.width === sourceBox.width && item.height === sourceBox.height));
+  const modelFrames = deepseek.strokes.filter(item => item.width > 240 && item.width < 300 && item.height >= 160 && item.height <= 220);
+  assert.equal(modelFrames.length, 2, 'only Flash and Pro should use subordinate card frames');
+  assert.ok(Math.abs(modelFrames[0].y - modelFrames[1].y) < 2, 'model subcards should align horizontally');
 });
 
 test('the Kindle unlock shelf remains the bottom 84px gray system area', () => {
