@@ -47,5 +47,5 @@ test('all sources share one native refresh batch and no page owns a recurring ti
   assert.match(refreshBlock, /match background_refresh_window\(/);
   assert.match(refreshBlock, /Err\(error\) => failed\.push/);
   assert.match(extractor, /window\.__TOKEN_ON_KINDLE_SYNC__/);
-  assert.match(renderer, /syncRequestedAt \|\| state\[source\]\?\.capturedAt/);
+  assert.match(renderer, /capturedAt \|\| state\[source\]\?\.syncRequestedAt/);
 });

@@ -74,11 +74,31 @@ function drawVolcengineModels(ctx, models, box, y, height, plan) {
   });
 }`;
 
+const timeFormatter = `const formatTime = value => {
+  if (value == null || value === '') return '未同步';
+  const raw = typeof value === 'string' ? value.trim() : value;
+  let normalized = raw;
+  if (typeof raw === 'string' && /^\\d{10}$/.test(raw)) normalized = Number(raw) * 1000;
+  else if (typeof raw === 'string' && /^\\d{13}$/.test(raw)) normalized = Number(raw);
+  else if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0 && raw < 1e12) normalized = raw * 1000;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return '未同步';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};`;
+
 source = replaceBlock(source, 'export function volcengineModelLayoutPlan(boxHeight, modelCount) {', 'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {', layout, 'Volcengine layout');
 source = replaceBlock(source, marker, 'function drawVolcengine(ctx, volcengine, box) {', textList, 'Volcengine model list');
+source = replaceBlock(source, 'const formatTime = value => {', 'const shorten = (value, maxLength = 24) => {', timeFormatter, 'Footer sync time formatter');
+
+const oldFooter = "const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.syncRequestedAt || state[source]?.capturedAt)}`).join('  ·  ');";
+const newFooter = "const text = sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt || state[source]?.syncRequestedAt)}`).join('  ·  ');";
+if (!source.includes(oldFooter) && !source.includes(newFooter)) throw new Error('Footer sync time source changed');
+source = source.replace(oldFooter, newFooter);
 
 if (!source.includes("drawText(ctx, '今日模型 TOKEN'")) throw new Error('Volcengine today heading missing');
 if (!source.includes("'今日调用 ' + models.length + ' 个'")) throw new Error('Volcengine today count missing');
 if (!source.includes('formatTokens(model.latestTokens)')) throw new Error('Volcengine latest token value missing');
+if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Footer must prefer successful capture time');
+if (!source.includes("/^\\d{10}$/.test(raw)")) throw new Error('Footer must support Unix-second timestamps');
 fs.writeFileSync(rendererPath, source);
-console.log('Composed today-only Volcengine model list for Kindle 7');
+console.log('Composed Kindle renderer fixes and today-only Volcengine model list');
