@@ -19,24 +19,25 @@ test('balanced vertical flow keeps internal gaps equal and bounded', () => {
   assert.ok(spacious.offset > 9, 'surplus space should center the content group instead of creating one giant gap');
 });
 
-test('DeepSeek summary and full-width model rows adapt across all source heights', () => {
-  const compact = deepSeekLayoutPlan(294);
-  const medium = deepSeekLayoutPlan(348);
-  const full = deepSeekLayoutPlan(584);
+test('DeepSeek summary and side-by-side model cards adapt across source heights', () => {
+  const compact = deepSeekLayoutPlan(306);
+  const medium = deepSeekLayoutPlan(368);
+  const full = deepSeekLayoutPlan(618);
 
-  assert.equal(compact.bodyHeight, 260);
-  assert.ok(compact.summaryHeight >= 78 && compact.summaryHeight <= 86);
-  assert.ok(compact.modelHeight >= 82);
-  assert.ok(compact.summaryHeight + compact.sectionGap + compact.modelHeight * 2 <= compact.bodyHeight);
+  assert.equal(compact.bodyHeight, 272);
+  assert.ok(compact.summaryHeight >= 76 && compact.summaryHeight <= 84);
+  assert.ok(compact.modelHeight >= 164 && compact.modelHeight <= 210);
+  assert.ok(compact.summaryHeight + compact.sectionGap + compact.modelHeight <= compact.bodyHeight);
 
   assert.ok(medium.summaryHeight >= compact.summaryHeight);
-  assert.ok(medium.modelHeight > compact.modelHeight);
-  assert.equal(full.summaryHeight, 86, 'summary should stop growing so spare height goes to readable model rows');
-  assert.ok(full.modelHeight > medium.modelHeight);
+  assert.ok(medium.modelHeight >= compact.modelHeight);
+  assert.equal(full.summaryHeight, 84, 'summary should stop growing before it dominates the screen');
+  assert.equal(full.modelHeight, 210, 'model cards should cap their height instead of stretching into empty poster space');
 
   assert.match(renderer, /drawMetricGrid\(ctx, metrics,[\s\S]*?, 3\);/);
-  assert.match(renderer, /drawModelRow\(ctx, flash, 'V4 FLASH'/);
-  assert.match(renderer, /drawModelRow\(ctx, pro, 'V4 PRO'/);
+  assert.match(renderer, /drawModelCard\(ctx, flash, 'V4 FLASH'/);
+  assert.match(renderer, /drawModelCard\(ctx, pro, 'V4 PRO'/);
+  assert.match(renderer, /const cardGap = 10/);
 });
 
 test('all sources share one native refresh batch and no page owns a recurring timer', () => {
