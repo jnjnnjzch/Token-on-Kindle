@@ -37,7 +37,7 @@ fs.writeFileSync(cargoPath, `${cargo.slice(0, packageStart)}${updatedBlock}${car
 const cargoLockPath = path.join(root, 'src-tauri', 'Cargo.lock');
 if (fs.existsSync(cargoLockPath)) {
   const cargoLock = fs.readFileSync(cargoLockPath, 'utf8');
-  const packagePattern = /(\[\[package\]\]\nname = "token-on-kindle"\nversion = ")[^"]+("\n)/;
+  const packagePattern = /(\[\[package\]\]\r?\nname = "token-on-kindle"\r?\nversion = ")[^"]+("\r?\n)/;
   if (!packagePattern.test(cargoLock)) {
     throw new Error('Could not find token-on-kindle package version in Cargo.lock');
   }

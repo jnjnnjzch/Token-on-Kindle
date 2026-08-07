@@ -22,9 +22,9 @@ test('generated extractor never closes native source windows during refresh', ()
   assert.doesNotMatch(extractor, /__TOKEN_ON_KINDLE_NAVIGATE_BRIDGE__|token-on-kindle\.invalid|location\.assign\(/);
 });
 
-test('compact payloads remain enabled on the title transport', () => {
+test('compact payloads remain enabled on all title transports', () => {
   assert.match(extractor, /__TOKEN_ON_KINDLE_COMPACT_SIGNAL__/);
   assert.match(extractor, /const encoded = encodeSignal\(payload\)/);
   assert.match(extractor, /__TOKEN_ON_KINDLE__:deepseek:\$\{encoded\}/);
-  assert.match(extractor, /__TOKEN_ON_KINDLE__:volcengine:\$\{encoded\}/);
+  assert.match(extractor, /__TOKEN_ON_KINDLE__:volcengine:\$\{encodeSignal\(payload\)\}/);
 });
