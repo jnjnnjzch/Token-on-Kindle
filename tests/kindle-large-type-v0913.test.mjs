@@ -78,7 +78,7 @@ test('three-source Kindle layout spends reclaimed space on larger typography', (
   renderKindleDashboard(recording.context, sampleState());
   const { texts } = recording;
 
-  for (const heading of ['CODEX', 'DEEPSEEK', '火山方舟']) {
+  for (const heading of ['CODEX', 'DEEPSEEK', '火山方舟 AFP']) {
     const item = findText(texts, heading);
     assert.ok(item, `${heading} should be rendered`);
     assert.ok(item.fontSize >= 20, `${heading} should use at least 20px type`);
