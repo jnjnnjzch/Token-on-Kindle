@@ -30,11 +30,11 @@ test('all seven non-empty source combinations receive bounded Kindle layout boxe
     for (const box of boxes) {
       assert.equal(box.x, 28);
       assert.equal(box.width, 544);
-      assert.ok(box.height >= 132);
-      assert.ok(box.y >= 82);
-      assert.ok(box.y + box.height <= 666.001);
+      assert.ok(box.height >= 134);
+      assert.ok(box.y >= 70);
+      assert.ok(box.y + box.height <= 706.001);
     }
-    assert.equal(boxes.at(-1).y + boxes.at(-1).height, 666);
+    assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
   }
 });
 
@@ -43,8 +43,8 @@ test('DeepSeek always receives enough height for Flash and Pro details', () => {
     const deepseek = sourceLayoutBoxes(display).find(box => box.source === 'deepseek');
     assert.ok(deepseek.height >= DEEPSEEK_DETAIL_MIN_HEIGHT);
   }
-  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 294);
-  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: false })[1].height, 348);
+  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true })[1].height, 340);
+  assert.equal(sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: false })[1].height, 382);
 });
 
 test('DeepSeek model cards retain total, cache miss, cache hit, output, and cache rate', () => {
@@ -63,7 +63,7 @@ test('DeepSeek model cards retain total, cache miss, cache hit, output, and cach
   assert.doesNotMatch(renderer, /box\.height < 245/);
 });
 
-test('Codex keeps a full-width single quota when no 5h limit exists', () => {
+test('Codex identifies weekly quota while leaving room for a future 5h quota', () => {
   const weekly = { id: 'weekly', remainingPercent: 63 };
   assert.deepEqual(selectCodexQuotas({ quotas: [weekly] }), { weekly, hourly: null });
 });
