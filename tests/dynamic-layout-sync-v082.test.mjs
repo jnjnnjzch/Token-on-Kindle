@@ -42,7 +42,8 @@ test('all sources share one native refresh batch and no page owns a recurring ti
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
   assert.match(refreshBlock, /\("codex", "Codex", true\)/);
   assert.match(refreshBlock, /\("deepseek", "DeepSeek", true\)/);
-  assert.match(refreshBlock, /\("volcengine", "火山方舟", false\)/);
+  assert.match(refreshBlock, /\("volcengine", "火山方舟", true\)/);
+  assert.doesNotMatch(refreshBlock, /\("volcengine", "火山方舟", false\)/);
   assert.match(refreshBlock, /match background_refresh_window\(/);
   assert.match(refreshBlock, /Err\(error\) => failed\.push/);
   assert.match(extractor, /window\.__TOKEN_ON_KINDLE_SYNC__/);
