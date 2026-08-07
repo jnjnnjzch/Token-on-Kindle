@@ -63,10 +63,11 @@ fn compose_extractor() {
     let output = fs::read_to_string(&target)
         .unwrap_or_else(|error| panic!("read {}: {error}", target.display()));
     for marker in [
-        "TOKEN-ON-KINDLE DIRECT READERS BUILD",
+        "TOKEN-ON-KINDLE DIRECT API WORKERS BUILD",
         "platform-internal-api",
-        "getEchartsInstance",
-        "lastGoodChart",
+        "GetAgentPlanSeatAFPUsage",
+        "GetAgentPlanSeatUsageDetails",
+        "v0.6.2-reload-worker",
     ] {
         assert!(
             output.contains(marker),
@@ -77,10 +78,19 @@ fn compose_extractor() {
         !output.contains("new MutationObserver"),
         "continuous DOM observer remains active"
     );
-    assert!(
-        !output.contains("\n  installVolcengineNetworkCapture();"),
-        "legacy Volcengine request interception remains active"
-    );
+    for marker in [
+        "__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_ECHARTS__",
+        "__TOKEN_ON_KINDLE_READ_ECHARTS_OPTION__",
+        "__TOKEN_ON_KINDLE_VOLCENGINE_RESPONSES__",
+        "collectVolcengineWindow",
+        "volcengineUsageReady",
+        "volcengineModelsFromDom",
+    ] {
+        assert!(
+            !output.contains(marker),
+            "legacy Volcengine reader remains active: {marker}"
+        );
+    }
 }
 
 fn generate_version_module() {
@@ -99,12 +109,11 @@ fn main() {
         "../tools/compose-extractor.mjs",
         "../web/extractor-base.js",
         "../web/deepseek-direct-reader.js",
-        "../web/volcengine-chart-reader.js",
+        "../web/volcengine-direct-reader.js",
         "../shared/deepseek-response-parser-v2.mjs",
         "../shared/deepseek-summary-parser.mjs",
         "../shared/deepseek-platform-parser.mjs",
-        "../shared/volcengine-echarts-parser.mjs",
-        "../shared/volcengine-react-echarts-access.mjs",
+        "../shared/volcengine-internal-api-parser.mjs",
     ] {
         println!("cargo:rerun-if-changed={path}");
     }
