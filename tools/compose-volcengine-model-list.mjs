@@ -44,7 +44,7 @@ const codexRenderer = `function drawCodexQuotaRow(ctx, quota, x, y, width, heigh
   const barY = y + (primary ? 29 : 20);
   drawBar(ctx, x + 12, barY, width - 24, primary ? 9 : 5, remaining == null ? 0 : remaining / 100);
   const detailY = barY + (primary ? 13 : 8);
-  drawText(ctx, used == null ? '已用 —' : `已用 ${formatPercent(used)}`, x + 12, detailY, primary ? 9 : 7.5, 650, 'left', PALETTE.dark);
+  drawText(ctx, used == null ? '已用 —' : '已用 ' + formatPercent(used), x + 12, detailY, primary ? 9 : 7.5, 650, 'left', PALETTE.dark);
   if (quota?.resetText) {
     drawText(ctx, shorten(quota.resetText, primary ? 34 : 28), x + width - 12, detailY, primary ? 9 : 7.5, 600, 'right', PALETTE.dark);
   }
@@ -136,7 +136,7 @@ const timeFormatter = `const formatTime = value => {
 
 const headerFooter = `function sourceSyncText(state, sources) {
   const labels = { codex: 'C', deepseek: 'D', volcengine: 'V' };
-  return sources.map(source => `${labels[source]} ${formatTime(state[source]?.capturedAt || state[source]?.syncRequestedAt)}`).join('  ·  ');
+  return sources.map(source => labels[source] + ' ' + formatTime(state[source]?.capturedAt || state[source]?.syncRequestedAt)).join('  ·  ');
 }
 
 function drawHeader(ctx, state, sources) {
@@ -161,13 +161,13 @@ source = replaceBlock(source, 'function drawHeader(ctx, sources) {', 'export fun
 
 if (source.includes('drawHeader(ctx, sources);')) source = source.replace('drawHeader(ctx, sources);', 'drawHeader(ctx, state, sources);');
 if (!source.includes('drawHeader(ctx, state, sources);')) throw new Error('Dashboard must pass state into the compact header');
-if (!source.includes("contentTop: 70")) throw new Error('Portrait dashboard content should start below the compact header');
-if (!source.includes("contentBottom: 706")) throw new Error('Dashboard should reclaim the old footer timestamp area');
+if (!source.includes('contentTop: 70')) throw new Error('Portrait dashboard content should start below the compact header');
+if (!source.includes('contentBottom: 706')) throw new Error('Dashboard should reclaim the old footer timestamp area');
 if (!source.includes("'5 小时额度'")) throw new Error('Codex must reserve a 5-hour quota row for future API support');
 if (!source.includes("quota ? formatPercent(remaining) : '—'")) throw new Error('Missing 5-hour quota must render as a compact placeholder');
 if (!source.includes('capturedAt || state[source]?.syncRequestedAt')) throw new Error('Header sync time must prefer successful capture time');
 if (!source.includes("/^\\d{10}$/.test(raw)")) throw new Error('Sync time must support Unix-second timestamps');
-if (!source.includes("ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight)")) throw new Error('Kindle unlock shelf must remain intact');
+if (!source.includes('ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight)')) throw new Error('Kindle unlock shelf must remain intact');
 if (!source.includes("drawText(ctx, '今日模型 TOKEN'")) throw new Error('Volcengine today heading missing');
 if (!source.includes("'今日调用 ' + models.length + ' 个'")) throw new Error('Volcengine today count missing');
 if (!source.includes('formatTokens(model.latestTokens)')) throw new Error('Volcengine latest token value missing');
