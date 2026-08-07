@@ -7,7 +7,7 @@ const tauriVersion = JSON.parse(fs.readFileSync(path.join(root, 'src-tauri', 'ta
 const cargo = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.toml'), 'utf8');
 const cargoPackage = cargo.match(/\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m)?.[1];
 const cargoLock = fs.readFileSync(path.join(root, 'src-tauri', 'Cargo.lock'), 'utf8');
-const cargoLockPackage = cargoLock.match(/\[\[package\]\]\nname = "token-on-kindle"\nversion = "([^"]+)"/)?.[1];
+const cargoLockPackage = cargoLock.match(/\[\[package\]\]\r?\nname = "token-on-kindle"\r?\nversion = "([^"]+)"/)?.[1];
 const versionModule = fs.readFileSync(path.join(root, 'web', 'version.js'), 'utf8');
 const webVersion = versionModule.match(/APP_VERSION\s*=\s*["']([^"']+)["']/)?.[1];
 
