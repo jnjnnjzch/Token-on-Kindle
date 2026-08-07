@@ -15,12 +15,13 @@ test('main window starts first and provider warm-up is non-fatal', () => {
   assert.equal((rust.match(/\.initialization_script\(EXTRACTOR_SCRIPT\)/g) || []).length, 1);
 });
 
-test('manual and scheduled refresh recreate missing provider windows', () => {
+test('manual and scheduled refresh recreate missing provider windows and reload all hidden workers', () => {
   const refresh = rust.slice(rust.indexOf('fn reload_sources(app: &AppHandle)'), rust.indexOf('#[cfg(any(target_os = "android"', rust.indexOf('fn reload_sources(app: &AppHandle)')));
   assert.match(refresh, /ensure_source_window\(app, source\)/);
   assert.match(refresh, /\("codex", "Codex", true\)/);
   assert.match(refresh, /\("deepseek", "DeepSeek", true\)/);
-  assert.match(refresh, /\("volcengine", "火山方舟", false\)/);
+  assert.match(refresh, /\("volcengine", "火山方舟", true\)/);
+  assert.doesNotMatch(refresh, /\("volcengine", "火山方舟", false\)/);
   assert.match(refresh, /if created/);
   assert.match(refresh, /已启动/);
 });
