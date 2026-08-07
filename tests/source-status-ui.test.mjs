@@ -12,5 +12,6 @@ test('all three source controls expose actionable connection states', () => {
   assert.match(app, /status\.textContent = '已连接'/);
   assert.match(app, /status\.textContent = '未读取到用量'/);
   assert.match(app, /status\.textContent = '需要登录或导航'/);
-  assert.match(app, /Agent Plan 企业版的“用量统计”/);
+  assert.match(app, /控制台接口会话|接口 Worker/);
+  assert.doesNotMatch(app, /识别到 AFP 卡片|等待页面返回/);
 });
