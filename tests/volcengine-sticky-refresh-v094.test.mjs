@@ -18,12 +18,22 @@ test('after bootstrap the WebView leaves the enterprise UI for a lightweight sam
   assert.doesNotMatch(reader, /collectWindow|usageCard|readModelChart|_echarts_instance_/);
 });
 
-test('background sync uses the v0.6.2 reload lifecycle on the worker page', () => {
-  assert.match(reader, /function queueReload\(options = \{\}\)/);
-  assert.match(reader, /location\.reload\(\)/);
-  assert.match(reader, /if \(isWorkerPage\(\) && !options\.reloadPass && !options\.startup\)/);
+test('scheduled refresh reloads the hidden Volcengine worker through the native v0.6.2 path', () => {
+  const refreshStart = rust.indexOf('fn reload_sources(app: &AppHandle)');
+  const refreshEnd = rust.indexOf('#[cfg(any(target_os = "android"', refreshStart);
+  const refresh = rust.slice(refreshStart, refreshEnd);
+  assert.match(refresh, /\("volcengine", "火山方舟", true\)/);
+  assert.doesNotMatch(refresh, /\("volcengine", "火山方舟", false\)/);
+  assert.match(rust, /sessionStorage\.setItem\('__token_on_kindle_refresh_minutes'/);
+  assert.match(rust, /window\.blur\(\);location\.reload\(\)/);
   assert.match(reader, /lifecycle:\s*'v0\.6\.2-reload-worker'/);
   assert.doesNotMatch(reader, /setInterval\(/);
+});
+
+test('the worker startup performs the API replay after every native reload', () => {
+  assert.match(reader, /if \(isWorkerPage\(\)\) \{/);
+  assert.match(reader, /runWorkerSync\(\{ \.\.\.options, automatic: true, startup: true \}\)/);
+  assert.match(reader, /window\.addEventListener\('pageshow'/);
 });
 
 test('opening the Volcengine source window enters the real login page', () => {
