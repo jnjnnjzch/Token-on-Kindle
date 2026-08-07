@@ -14,10 +14,10 @@ test('today-only Volcengine display excludes monthly-only and zero-latest models
   assert.deepEqual(models.map(model => model.latestTokens), [120, 12]);
 });
 
-test('Kindle 7 three-source layout gives Volcengine more room and readable type', () => {
+test('three-source portrait layout preserves Volcengine room and readable type', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [132, 294, 150]);
-  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 666);
+  assert.deepEqual(boxes.map(box => box.height), [146, 332, 150]);
+  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
   const plan = volcengineModelLayoutPlan(150, 8);
   assert.equal(plan.columns, 2);
   assert.equal(plan.rows, 4);

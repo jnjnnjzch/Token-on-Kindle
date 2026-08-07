@@ -59,15 +59,15 @@ test('model text layout keeps every model at every card height', () => {
   }
 });
 
-test('three-source compact Volcengine card shows six models as two columns by three rows', () => {
+test('three-source compact Volcengine card preserves six models as two columns by three rows', () => {
   const boxes = sourceLayoutBoxes({ codex: true, deepseek: true, volcengine: true });
-  assert.deepEqual(boxes.map(box => box.height), [132, 294, 150]);
+  assert.deepEqual(boxes.map(box => box.height), [146, 332, 150]);
   const compact = volcengineModelLayoutPlan(150, 6);
   assert.equal(compact.columns, 2);
   assert.equal(compact.rows, 3);
   assert.equal(compact.visibleCount, 6);
   assert.equal(compact.overflowCount, 0);
-  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 666);
+  assert.equal(boxes.at(-1).y + boxes.at(-1).height, 706);
   assert.match(renderer, /TOKEN-ON-KINDLE VOLCENGINE TEXT MODEL LIST/);
   assert.match(renderer, /今日模型 TOKEN/);
   assert.match(renderer, /今日调用/);
