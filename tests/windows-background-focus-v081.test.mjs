@@ -6,12 +6,14 @@ const native = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.ur
 const extractor = fs.readFileSync(new URL('../web/extractor-base.js', import.meta.url), 'utf8');
 const releaseExtractor = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
 
-test('background refresh reloads stateless sources but preserves the Volcengine view', () => {
+test('background refresh reloads every hidden source including the lightweight Volcengine worker', () => {
   const refreshBlock = native.match(/fn reload_sources\(app: &AppHandle\)[\s\S]*?#\[cfg\(any/)?.[0] || '';
   assert.match(refreshBlock, /\("codex", "Codex", true\)/);
   assert.match(refreshBlock, /\("deepseek", "DeepSeek", true\)/);
-  assert.match(refreshBlock, /\("volcengine", "火山方舟", false\)/);
+  assert.match(refreshBlock, /\("volcengine", "火山方舟", true\)/);
+  assert.doesNotMatch(refreshBlock, /\("volcengine", "火山方舟", false\)/);
   assert.match(native, /fn background_refresh_window/);
+  assert.match(native, /if window\.is_focused\(\)\.unwrap_or\(false\)/);
   assert.match(native, /if reload_page/);
   assert.match(native, /location\.reload\(\)/);
   assert.match(refreshBlock, /Err\(error\) => failed\.push/);
