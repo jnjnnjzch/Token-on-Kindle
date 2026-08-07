@@ -576,10 +576,12 @@ fn start_refresh_scheduler(app: AppHandle, refresh: Arc<RefreshClock>) {
         };
         let wait = Duration::from_secs((*guard).saturating_mul(60));
         let result = refresh.changed.wait_timeout(guard, wait);
-        let Ok((_guard, timeout)) = result else {
+        let Ok((guard, timeout)) = result else {
             return;
         };
-        if timeout.timed_out() && !desktop::is_paused(&app) {
+        let timed_out = timeout.timed_out();
+        drop(guard);
+        if timed_out && !desktop::is_paused(&app) {
             match reload_sources(&app) {
                 Ok(summary) if !summary.failed.is_empty() => {
                     eprintln!(
