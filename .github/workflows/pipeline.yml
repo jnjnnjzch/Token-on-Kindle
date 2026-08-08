@@ -227,9 +227,9 @@ jobs:
       - name: Build macOS application bundle
         if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
         run: npm run tauri build -- --bundles app --no-sign
-      - name: Build Linux AppImage
+      - name: Build Linux packages
         if: needs.prepare.outputs.publish == 'true' && runner.os == 'Linux'
-        run: npm run tauri build -- --bundles appimage
+        run: npm run tauri build -- --bundles appimage,deb
       - name: Package macOS
         if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
         shell: bash
@@ -249,10 +249,14 @@ jobs:
           version='${{ needs.prepare.outputs.version }}'
           mkdir -p release
           appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)
+          deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)
           test -n "$appimage"
+          test -n "$deb"
           cp "$appimage" "release/Token-on-Kindle-$version-linux-x64.AppImage"
           chmod +x "release/Token-on-Kindle-$version-linux-x64.AppImage"
+          cp "$deb" "release/Token-on-Kindle-$version-linux-x64.deb"
           sha256sum "release/Token-on-Kindle-$version-linux-x64.AppImage" > "release/Token-on-Kindle-$version-linux-x64.sha256"
+          sha256sum "release/Token-on-Kindle-$version-linux-x64.deb" > "release/Token-on-Kindle-$version-linux-x64-deb.sha256"
       - name: Upload desktop release payload
         if: needs.prepare.outputs.publish == 'true'
         uses: actions/upload-artifact@v4
@@ -283,8 +287,25 @@ jobs:
         run: npm install
       - name: Initialize Android project
         run: npm run tauri android init -- --ci
-      - name: Build installable arm64 debug APK
+      - name: Build compact installable arm64 debug APK
+        env:
+          CARGO_PROFILE_DEV_DEBUG: '0'
+          CARGO_PROFILE_DEV_STRIP: symbols
+          CARGO_PROFILE_DEV_OPT_LEVEL: s
         run: npm run tauri android build -- --debug --apk --target aarch64
+      - name: Verify Android package size
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*debug*.apk' -print -quit)
+          test -n "$apk"
+          apk_bytes=$(stat -c%s "$apk")
+          max_bytes=$((50 * 1024 * 1024))
+          echo "APK size: $apk_bytes bytes"
+          if (( apk_bytes > max_bytes )); then
+            echo "Android APK is unexpectedly large after stripping debug symbols" >&2
+            exit 1
+          fi
       - name: Package Android
         if: needs.prepare.outputs.publish == 'true'
         shell: bash
@@ -342,6 +363,7 @@ jobs:
           files: |
             release/Token-on-Kindle-*.zip
             release/Token-on-Kindle-*.AppImage
+            release/Token-on-Kindle-*.deb
             release/Token-on-Kindle-*.apk
             release/Token-on-Kindle-*-SHA256SUMS.txt
 
