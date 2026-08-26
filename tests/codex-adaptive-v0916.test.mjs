@@ -57,7 +57,13 @@ test('Codex candidate merge prefers a candidate with reset metadata', () => {
   const { hooks } = loadCodexHooks();
   const weak = { id: '5h', displayedPercent: 23, remainingPercent: null, usedPercent: null, resetText: null, _score: 10 };
   const rich = { id: '5h', displayedPercent: 23, remainingPercent: 77, usedPercent: 23, resetText: '2h 14m', _score: 28 };
-  assert.deepEqual(hooks.mergeQuota(weak, rich), rich);
+  const merged = hooks.mergeQuota(weak, rich);
+  assert.equal(merged.id, '5h');
+  assert.equal(merged.displayedPercent, 23);
+  assert.equal(merged.remainingPercent, 77);
+  assert.equal(merged.usedPercent, 23);
+  assert.equal(merged.resetText, '2h 14m');
+  assert.equal(merged._score, 28);
 });
 
 test('Kindle renderer still selects the adaptive 5h quota and its reset text', () => {
