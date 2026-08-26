@@ -88,3 +88,20 @@ test('Codex background collector is short lived without a continuous DOM observe
   assert.match(compose, /window\.__TOKEN_ON_KINDLE_SYNC__\?\.\(\{ automatic: true, startup: true \}\)/);
   assert.match(compose, /codex-adaptive-v0\.9\.16/);
 });
+
+test('native desktop layer really disposes Codex instead of converting close into hide', () => {
+  const desktop = fs.readFileSync(new URL('../src-tauri/src/desktop.rs', import.meta.url), 'utf8');
+  assert.match(desktop, /if window\.label\(\) == "codex" \{\s*return;\s*\}/);
+  const codexGuard = desktop.indexOf('if window.label() == "codex"');
+  const preventClose = desktop.indexOf('api.prevent_close()', codexGuard);
+  assert.ok(codexGuard >= 0);
+  assert.ok(preventClose > codexGuard, 'prevent_close must only run after the Codex early return');
+});
+
+test('native refresh recreates a disposed Codex WebView before the next collection', () => {
+  const native = fs.readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');
+  assert.match(native, /fn ensure_source_window[\s\S]*get_webview_window\(label\)[\s\S]*create_source_window\(app, source\)/);
+  assert.match(native, /for \(source, source_name, reload_page\) in \[[\s\S]*\("codex", "Codex", true\)/);
+  assert.match(native, /let \(window, created\) = match ensure_source_window\(app, source\)/);
+  assert.match(native, /if created \{[\s\S]*refreshed\.push\(format!\("\{source_name\}（已启动）"\)\)/);
+});
