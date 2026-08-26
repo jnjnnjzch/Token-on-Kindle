@@ -211,7 +211,7 @@ const volcengineModules = guarded(
 );
 const output = `${GENERATED}\n${signalCompactor}\n${deepseekModules}\n${volcengineModules}\n${BASE_START}\n${canonical.trim()}\n${BASE_END}\n${codexReader}\n${deepseekReader}\n${volcengineReader}\n`;
 
-if (!output.includes('codex-adaptive-v0.9.16')) throw new Error('adaptive Codex quota reader missing');
+if (!output.includes('codex-adaptive-v0.9.17')) throw new Error('adaptive Codex quota reader missing');
 if (!output.includes('short-lived-hidden-worker')) throw new Error('Codex short-lived worker lifecycle missing');
 if (!output.includes('platform-internal-api')) throw new Error('DeepSeek direct reader missing');
 if (!output.includes('GetAgentPlanSeatAFPUsage')) throw new Error('Volcengine AFP internal API worker missing');
