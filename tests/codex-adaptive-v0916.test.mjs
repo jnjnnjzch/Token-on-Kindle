@@ -107,15 +107,18 @@ test('Kindle renderer selects the adaptive 5h quota and independent weekly reset
   assert.equal(weekly.resetText, 'Aug 30');
 });
 
-test('Codex background collector is short lived without a continuous DOM observer', () => {
+test('Codex background collector is short lived and generated extractor carries the v0.9.17 reader', () => {
   const { reader } = loadCodexHooks();
   const compose = fs.readFileSync(new URL('../tools/compose-extractor.mjs', import.meta.url), 'utf8');
+  const generated = fs.readFileSync(new URL('../web/extractor.js', import.meta.url), 'utf8');
+  assert.match(reader, /codex-adaptive-v0\.9\.17/);
   assert.match(reader, /short-lived-hidden-worker/);
   assert.match(reader, /document\.visibilityState !== 'hidden'/);
   assert.match(reader, /window\.close\(\)/);
   assert.doesNotMatch(reader, /new MutationObserver/);
   assert.match(compose, /window\.__TOKEN_ON_KINDLE_SYNC__\?\.\(\{ automatic: true, startup: true \}\)/);
   assert.match(compose, /codex-adaptive-v0\.9\.17/);
+  assert.match(generated, /codex-adaptive-v0\.9\.17/);
 });
 
 test('native desktop layer really disposes Codex instead of converting close into hide', () => {
