@@ -75,7 +75,7 @@ test('Codex + DeepSeek only uses the v0.6.2 portrait geometry', () => {
   assert.equal(find('总体缓存命中率')?.y, 598);
 });
 
-test('Volcengine stays on the independent current renderer when enabled', () => {
+test('Volcengine stays on the independent current renderer while Codex still keeps 5h left and weekly right', () => {
   const ctx = fakeContext();
   const state = dualState();
   state.displaySources.volcengine = true;
@@ -91,4 +91,10 @@ test('Volcengine stays on the independent current renderer when enabled', () => 
   assert.ok(ctx.operations.some(item => item.type === 'text' && item.text === '火山方舟 AFP'));
   const deepseekHeading = ctx.operations.find(item => item.type === 'text' && item.text === 'DEEPSEEK');
   assert.notEqual(deepseekHeading?.y, 246, 'three-source mode must not use the v0.6.2 dual-source geometry');
+
+  const hourly = ctx.operations.find(item => item.type === 'text' && item.text === '5 小时额度');
+  const weekly = ctx.operations.find(item => item.type === 'text' && item.text === '周额度');
+  assert.ok(hourly);
+  assert.ok(weekly);
+  assert.ok(hourly.x < weekly.x, 'three-source Codex layout must also keep 5h on the left');
 });
