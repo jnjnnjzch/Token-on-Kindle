@@ -196,6 +196,202 @@ function drawFooter(ctx) {
   ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight);
 }`;
 
+const dualSourceRenderer = `const LEGACY_DUAL_PALETTE = Object.freeze({
+  dark: '#3f3f3f',
+  mid: '#777777',
+  light: '#d2d2d2',
+  paper: '#f2f2f2'
+});
+
+function drawLegacyBar(ctx, x, y, width, height, ratio) {
+  ctx.fillStyle = LEGACY_DUAL_PALETTE.light;
+  ctx.fillRect(x, y, width, height);
+  const filled = Math.round(width * clamp(ratio));
+  if (filled > 0) {
+    ctx.fillStyle = PALETTE.ink;
+    ctx.fillRect(x, y, filled, height);
+  }
+  ctx.strokeStyle = PALETTE.ink;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, width, height);
+}
+
+function drawLegacyDualHeader(ctx) {
+  drawText(ctx, 'AI 用量', 28, 18, 34, 800);
+  drawText(ctx, 'Codex · DeepSeek', 572, 30, 14, 650, 'right', LEGACY_DUAL_PALETTE.dark);
+  drawLine(ctx, 28, 68, 572, 68, 3);
+}
+
+function drawLegacyQuotaColumn(ctx, quota, x, width, fallbackLabel) {
+  const innerLeft = x + 14;
+  const innerRight = x + width - 14;
+  drawText(ctx, quotaLabel(quota, fallbackLabel), innerLeft, 116, 14, 750, 'left', LEGACY_DUAL_PALETTE.dark);
+  if (!quota) {
+    drawText(ctx, '未提供', innerLeft, 145, 26, 800);
+    drawText(ctx, '登录后自动识别', innerLeft, 199, 12, 600, 'left', LEGACY_DUAL_PALETTE.mid);
+    return;
+  }
+  const remaining = quotaRemaining(quota);
+  const used = numericValue(quota.usedPercent) ?? (remaining == null ? null : 100 - remaining);
+  drawText(ctx, '剩余', innerLeft, 137, 13, 700, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawText(ctx, formatPercent(remaining), innerRight, 128, 36, 850, 'right');
+  drawLegacyBar(ctx, innerLeft, 178, width - 28, 14, remaining == null ? 0 : remaining / 100);
+  drawText(ctx, used == null ? '已用 —' : '已用 ' + Math.round(used) + '%', innerLeft, 198, 11, 600, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawText(ctx, quota.resetText ? '重置 ' + shorten(quota.resetText, width > 300 ? 38 : 22) : '重置时间未知', innerLeft, 216, 11, 600, 'left', LEGACY_DUAL_PALETTE.dark);
+}
+
+function drawLegacyCodex(ctx, codex) {
+  drawText(ctx, 'CODEX', 28, 82, 15, 750);
+  drawBox(ctx, 28, 104, 544, 132, PALETTE.white, PALETTE.ink, 2);
+  const { weekly, hourly } = selectCodexQuotas(codex);
+  if (!weekly && !hourly) {
+    drawText(ctx, '尚未同步', 46, 132, 30, 800);
+    drawText(ctx, '打开 Codex Analytics 完成登录', 46, 184, 15, 550, 'left', LEGACY_DUAL_PALETTE.dark);
+    return;
+  }
+  if (weekly && hourly) {
+    drawLine(ctx, 300, 116, 300, 224, 2, LEGACY_DUAL_PALETTE.dark);
+    drawLegacyQuotaColumn(ctx, hourly, 28, 272, '5 小时额度');
+    drawLegacyQuotaColumn(ctx, weekly, 300, 272, '周额度');
+    return;
+  }
+  drawLegacyQuotaColumn(ctx, weekly || hourly, 28, 544, weekly ? '周额度' : '小时额度');
+}
+
+function drawLegacyDeepSeekSummary(ctx, deepseek, todayCost, todayTokens) {
+  drawText(ctx, 'DEEPSEEK', 28, 246, 15, 750);
+  drawBox(ctx, 28, 268, 544, 116, LEGACY_DUAL_PALETTE.paper, PALETTE.ink, 2);
+  const topMetrics = [
+    ['余额', formatMoney(deepseek.balance)],
+    ['今日费用', formatMoney(todayCost)],
+    ['今日 Token', formatTokens(todayTokens)]
+  ];
+  topMetrics.forEach(([label, value], index) => {
+    const left = 28 + index * (544 / 3);
+    const center = left + 544 / 6;
+    drawText(ctx, label, center, 278, 13, 650, 'center', LEGACY_DUAL_PALETTE.dark);
+    drawText(ctx, value, center, 300, 24, 800, 'center');
+    if (index < 2) drawLine(ctx, left + 544 / 3, 278, left + 544 / 3, 326, 2, LEGACY_DUAL_PALETTE.dark);
+  });
+  drawLine(ctx, 28, 334, 572, 334, 2, LEGACY_DUAL_PALETTE.dark);
+  const monthly = deepSeekMonthlyMetrics(deepseek);
+  const bottomMetrics = [
+    ['累计费用', formatMoney(monthly.cumulativeCost)],
+    ['本月费用', formatMoney(monthly.monthlyCost)],
+    ['本月 Token', formatTokens(monthly.monthlyTokens)]
+  ];
+  bottomMetrics.forEach(([label, value], index) => {
+    const left = 28 + index * (544 / 3);
+    const center = left + 544 / 6;
+    drawText(ctx, label, center, 342, 12, 650, 'center', LEGACY_DUAL_PALETTE.dark);
+    drawText(ctx, value, center, 359, 18, 800, 'center');
+    if (index < 2) drawLine(ctx, left + 544 / 3, 342, left + 544 / 3, 376, 2, LEGACY_DUAL_PALETTE.dark);
+  });
+}
+
+function drawLegacyModel(ctx, x, title, model) {
+  const y = 396;
+  drawBox(ctx, x, y, 264, 178, PALETTE.white, PALETTE.ink, 2);
+  drawText(ctx, title, x + 14, y + 10, 15, 800);
+  drawText(ctx, formatMoney(model.cost), x + 248, y + 10, 18, 800, 'right');
+  drawText(ctx, formatTokens(model.tokens), x + 14, y + 38, 28, 850);
+  drawText(ctx, '总 TOKEN', x + 14, y + 72, 11, 650, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawLine(ctx, x + 14, y + 90, x + 250, y + 90, 2, LEGACY_DUAL_PALETTE.dark);
+  const parts = [
+    ['未缓存', model.cacheMissTokens],
+    ['已缓存', model.cacheHitTokens],
+    ['输出', model.outputTokens]
+  ];
+  parts.forEach(([label, value], index) => {
+    const center = x + 14 + (index + 0.5) * (236 / 3);
+    drawText(ctx, label, center, y + 97, 10, 650, 'center', LEGACY_DUAL_PALETTE.dark);
+    drawText(ctx, formatTokens(value), center, y + 114, 14, 800, 'center');
+  });
+  drawText(ctx, '缓存率', x + 14, y + 141, 11, 650, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawText(ctx, formatPercent(model.cacheRate), x + 250, y + 141, 11, 750, 'right', LEGACY_DUAL_PALETTE.dark);
+  drawLegacyBar(ctx, x + 14, y + 160, 236, 10, cacheRateToRatio(model.cacheRate));
+}
+
+function drawLegacyMonthlyFallback(ctx, deepseek) {
+  const monthly = deepSeekMonthlyMetrics(deepseek);
+  const requests = monthly.monthlyRequests;
+  const tokens = monthly.monthlyTokens;
+  const average = requests && tokens != null ? tokens / requests : null;
+  drawBox(ctx, 28, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
+  drawText(ctx, '本月 API 请求', 42, 416, 15, 800);
+  drawText(ctx, formatNumber(requests), 42, 458, 34, 850);
+  drawText(ctx, '内部用量接口汇总', 42, 520, 13, 600, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawBox(ctx, 308, 396, 264, 178, PALETTE.white, PALETTE.ink, 2);
+  drawText(ctx, '平均 Token / 请求', 322, 416, 15, 800);
+  drawText(ctx, formatTokens(average), 322, 458, 34, 850);
+  drawText(ctx, '本月 Token ÷ 请求数', 322, 520, 13, 600, 'left', LEGACY_DUAL_PALETTE.dark);
+}
+
+function drawLegacyCache(ctx, deepseek, flash, pro, dailyMode) {
+  drawBox(ctx, 28, 586, 544, 70, LEGACY_DUAL_PALETTE.paper, PALETTE.ink, 2);
+  if (!dailyMode) {
+    drawText(ctx, '今日 Flash / Pro 明细正在同步', 44, 601, 19, 800);
+    drawText(ctx, '本月总览已显示', 556, 605, 13, 600, 'right', LEGACY_DUAL_PALETTE.dark);
+    return;
+  }
+  let cacheRate = numericValue(deepseek.cacheRate);
+  if (cacheRate == null) {
+    const hit = (flash.cacheHitTokens || 0) + (pro.cacheHitTokens || 0);
+    const miss = (flash.cacheMissTokens || 0) + (pro.cacheMissTokens || 0);
+    cacheRate = hit + miss > 0 ? hit / (hit + miss) * 100 : null;
+  }
+  drawText(ctx, '总体缓存命中率', 44, 598, 15, 750);
+  drawText(ctx, formatPercent(cacheRate), 556, 594, 25, 850, 'right');
+  drawLegacyBar(ctx, 44, 624, 512, 16, cacheRateToRatio(cacheRate));
+}
+
+function drawLegacyDualFooter(ctx, state) {
+  drawLine(ctx, 28, 668, 572, 668, 2);
+  drawText(ctx, 'Codex ' + formatTime(state.codex?.capturedAt || state.codex?.syncRequestedAt), 28, 682, 13, 650, 'left', LEGACY_DUAL_PALETTE.dark);
+  drawText(ctx, 'DeepSeek ' + formatTime(state.deepseek?.capturedAt || state.deepseek?.syncRequestedAt), 572, 682, 13, 650, 'right', LEGACY_DUAL_PALETTE.dark);
+  ctx.fillStyle = PALETTE.unlock;
+  ctx.fillRect(0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockHeight);
+  drawLine(ctx, 0, KINDLE_LAYOUT.unlockTop, KINDLE_LAYOUT.width, KINDLE_LAYOUT.unlockTop, 2, PALETTE.ink);
+}
+
+function renderLegacyCodexDeepSeek(ctx, state) {
+  drawLegacyDualHeader(ctx);
+  drawLegacyCodex(ctx, state.codex);
+  const deepseek = state.deepseek || {};
+  const flash = modelMetrics(deepseek, 'flash');
+  const pro = modelMetrics(deepseek, 'pro');
+  const todayTokens = numericValue(deepseek.todayTokens) ?? ([flash.tokens, pro.tokens].some(value => value != null) ? (flash.tokens || 0) + (pro.tokens || 0) : null);
+  const todayCost = numericValue(deepseek.todayCost) ?? ([flash.cost, pro.cost].some(value => value != null) ? (flash.cost || 0) + (pro.cost || 0) : null);
+  const dailyMode = [todayTokens, todayCost, flash.tokens, pro.tokens, flash.cost, pro.cost].some(value => value != null);
+  drawLegacyDeepSeekSummary(ctx, deepseek, todayCost, todayTokens);
+  if (dailyMode) {
+    drawLegacyModel(ctx, 28, 'V4 FLASH', flash);
+    drawLegacyModel(ctx, 308, 'V4 PRO', pro);
+  } else {
+    drawLegacyMonthlyFallback(ctx, deepseek);
+  }
+  drawLegacyCache(ctx, deepseek, flash, pro, dailyMode);
+  drawLegacyDualFooter(ctx, state);
+}
+
+export function renderKindleDashboard(ctx, state = {}) {
+  ctx.fillStyle = PALETTE.white;
+  ctx.fillRect(0, 0, KINDLE_LAYOUT.width, KINDLE_LAYOUT.height);
+  const sources = resolveDisplaySources(state.displaySources || {});
+  const legacyDualSource = sources.length === 2 && sources[0] === 'codex' && sources[1] === 'deepseek';
+  if (legacyDualSource) {
+    renderLegacyCodexDeepSeek(ctx, state);
+    return;
+  }
+  drawHeader(ctx, state, sources);
+  for (const box of sourceLayoutBoxes(state.displaySources || {})) {
+    if (box.source === 'codex') drawCodex(ctx, state.codex, box);
+    else if (box.source === 'deepseek') drawDeepSeek(ctx, state.deepseek, box);
+    else drawVolcengine(ctx, state.volcengine, box);
+  }
+  drawFooter(ctx);
+}`;
+
 source = replaceBlock(source, 'export const KINDLE_LAYOUT = Object.freeze({', 'export const SOURCE_ORDER = Object.freeze(', kindleLayout, 'Kindle canvas layout');
 source = replaceBlock(source, 'function preferredHeights(sources) {', 'export function sourceLayoutBoxes(displaySources = {}) {', preferredLayout, 'source layout heights');
 source = replaceBlock(source, "function drawCardTitle(ctx, title, box, subtitle = '') {", 'function quotaRemaining(quota) {', cardTitle, 'section title typography');
@@ -204,5 +400,29 @@ source = replaceBlock(source, 'function drawMetricGrid(ctx, metrics, x, y, width
 source = replaceBlock(source, 'function drawVolcengineQuotaStrip(ctx, windows, box, y, height) {', 'function drawVolcengineModelCell(ctx, model, x, y, width, height, compact) {', quotaStrip, 'Volcengine quota typography');
 source = replaceBlock(source, 'function drawVolcengine(ctx, volcengine, box) {', 'function sourceSyncText(state, sources) {', volcengineRenderer, 'Volcengine readable layout');
 source = replaceBlock(source, 'function sourceSyncText(state, sources) {', 'export function renderKindleDashboard(ctx, state = {}) {', headerFooter, 'friendly sync header and unlock footer');
+
+const codexOrderBefore = `    drawCodexQuotaColumn(ctx, weekly, box.x, bodyY + 4, half, bodyHeight, '周额度', false);
+    drawLine(ctx, box.x + half + columnGap / 2, bodyY + 2, box.x + half + columnGap / 2, box.y + box.height - 7, 1, PALETTE.light);
+    drawCodexQuotaColumn(ctx, hourly, box.x + half + columnGap, bodyY + 4, half, bodyHeight, quotaLabel(hourly, '5 小时额度'), false);`;
+const codexOrderAfter = `    drawCodexQuotaColumn(ctx, hourly, box.x, bodyY + 4, half, bodyHeight, quotaLabel(hourly, '5 小时额度'), false);
+    drawLine(ctx, box.x + half + columnGap / 2, bodyY + 2, box.x + half + columnGap / 2, box.y + box.height - 7, 1, PALETTE.light);
+    drawCodexQuotaColumn(ctx, weekly, box.x + half + columnGap, bodyY + 4, half, bodyHeight, '周额度', false);`;
+if (!source.includes(codexOrderBefore)) throw new Error('Codex generated quota order changed before v0.9.17 composition');
+source = source.replace(codexOrderBefore, codexOrderAfter);
+
+const renderStart = source.indexOf('export function renderKindleDashboard(ctx, state = {}) {');
+if (renderStart < 0) throw new Error('Dashboard renderer start changed');
+source = `${source.slice(0, renderStart)}${dualSourceRenderer.trimEnd()}\n`;
+
+if (!source.includes('legacyDualSource')) throw new Error('Codex + DeepSeek must use the v0.6.2 dual-source layout');
+if (!source.includes("drawLegacyQuotaColumn(ctx, hourly, 28, 272, '5 小时额度')")) throw new Error('5-hour Codex quota must be on the left in dual-source mode');
+if (!source.includes("drawLegacyQuotaColumn(ctx, weekly, 300, 272, '周额度')")) throw new Error('Weekly Codex quota must be on the right in dual-source mode');
+const dynamicHourly = source.indexOf('drawCodexQuotaColumn(ctx, hourly, box.x, bodyY + 4');
+const dynamicWeekly = source.indexOf('drawCodexQuotaColumn(ctx, weekly, box.x + half + columnGap');
+if (dynamicHourly < 0 || dynamicWeekly < 0 || dynamicHourly > dynamicWeekly) throw new Error('Dynamic Codex quota order must be 5-hour left, weekly right');
+if (!source.includes("drawText(ctx, 'DEEPSEEK', 28, 246, 15, 750)")) throw new Error('Dual-source DeepSeek geometry must match v0.6.2');
+if (!source.includes("drawBox(ctx, 28, 268, 544, 116")) throw new Error('Dual-source DeepSeek summary geometry must match v0.6.2');
+if (!source.includes("drawBox(ctx, x, y, 264, 178")) throw new Error('Dual-source model cards must match v0.6.2');
+if (!source.includes("else drawVolcengine(ctx, state.volcengine, box)")) throw new Error('Volcengine must remain on the current independent renderer');
 
 fs.writeFileSync(rendererPath, source);
