@@ -347,11 +347,6 @@ fn create_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
-fn rebuild_menu(_app: &AppHandle) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn rebuild_menu(app: &AppHandle) -> Result<(), String> {
     let Some(tray) = app.tray_by_id("main") else {
