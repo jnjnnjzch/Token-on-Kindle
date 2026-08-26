@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { renderKindleDashboard } from '../web/kindle-renderer.js';
 
 function fakeContext() {
@@ -73,6 +74,12 @@ test('Codex + DeepSeek only uses the v0.6.2 portrait geometry', () => {
   assert.equal(find('V4 FLASH')?.y, 406);
   assert.equal(find('V4 PRO')?.y, 406);
   assert.equal(find('总体缓存命中率')?.y, 598);
+});
+
+test('legacy v0.6.2 renderer contract is restricted to exactly Codex plus DeepSeek', () => {
+  const compose = fs.readFileSync(new URL('../tools/compose-kindle-eink-v0914.mjs', import.meta.url), 'utf8');
+  assert.match(compose, /const legacyDualSource = sources\.length === 2 && sources\[0\] === 'codex' && sources\[1\] === 'deepseek';/);
+  assert.match(compose, /if \(legacyDualSource\) \{\s*renderLegacyCodexDeepSeek\(ctx, state\);\s*return;\s*\}/);
 });
 
 test('Volcengine stays on the independent current renderer while Codex still keeps 5h left and weekly right', () => {
