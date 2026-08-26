@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   if (location.hostname !== 'chatgpt.com' || window.__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__) return;
-  window.__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__ = 'codex-adaptive-v0.9.16';
+  window.__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__ = 'codex-adaptive-v0.9.17';
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
@@ -49,13 +49,60 @@
     }, 300);
   }
 
+  const WEEKLY_RE = /(weekly|per\s+week|week(?:ly)?\s+limit|7[- ]?day|本周|每周|周额度|周限制)/i;
+  const DAILY_RE = /(daily|day\s+limit|today|今日|每天|日额度|日限制)/i;
+  const MONTHLY_RE = /(monthly|month\s+limit|本月|每月|月额度|月限制)/i;
+  const HOUR_RE = /(\d+(?:\.\d+)?)\s*(?:(?:[-\s]*(?:hours?|hrs?)|h)\b|小时)/ig;
+  const RESET_RE = /(?:next\s+reset|resets?|renewal|renews?|下次重置|重置时间|重置于|恢复于|刷新于|后重置|后恢复|后刷新)/i;
+  const QUOTA_WORD_RE = /(?:limit|quota|usage|window|额度|限制|配额)/i;
+
+  function segmentQuotaKinds(segment) {
+    const value = clean(segment);
+    if (!value) return [];
+    const kinds = [];
+    if (WEEKLY_RE.test(value)) kinds.push('weekly');
+
+    HOUR_RE.lastIndex = 0;
+    for (const match of value.matchAll(HOUR_RE)) {
+      const index = match.index ?? 0;
+      const before = value.slice(0, index);
+      const after = value.slice(index + match[0].length, index + match[0].length + 16);
+      const lastReset = Math.max(
+        before.toLowerCase().lastIndexOf('reset'),
+        before.toLowerCase().lastIndexOf('renew'),
+        before.lastIndexOf('重置'),
+        before.lastIndexOf('恢复'),
+        before.lastIndexOf('刷新')
+      );
+      const quotaMatches = [...before.matchAll(/(?:limit|quota|usage|window|额度|限制|配额)/ig)];
+      const lastQuotaWord = quotaMatches.length ? quotaMatches.at(-1).index ?? -1 : -1;
+      const resetDurationBefore = lastReset > lastQuotaWord;
+      const resetDurationAfter = /^\s*(?:后)?(?:重置|恢复|刷新)/i.test(after);
+      const resetOnlySegment = RESET_RE.test(value) && !QUOTA_WORD_RE.test(value) && !/%/.test(value);
+      if (resetDurationBefore || resetDurationAfter || resetOnlySegment) continue;
+      kinds.push(`${match[1]}h`);
+    }
+
+    if (DAILY_RE.test(value)) kinds.push('daily');
+    if (MONTHLY_RE.test(value)) kinds.push('monthly');
+    return [...new Set(kinds)];
+  }
+
+  function quotaKinds(text) {
+    const value = String(text ?? '');
+    const segments = value.split(/\r?\n+|\s*\|\s*/).map(clean).filter(Boolean);
+    const kinds = [];
+    for (const segment of segments) kinds.push(...segmentQuotaKinds(segment));
+    return [...new Set(kinds)];
+  }
+
   function quotaKind(text) {
-    const value = clean(text);
-    if (/(weekly|per\s+week|week(?:ly)?\s+limit|7[- ]?day|本周|每周|周额度|周限制)/i.test(value)) return 'weekly';
-    const hours = value.match(/(\d+(?:\.\d+)?)\s*(?:(?:[-\s]*(?:hours?|hrs?)|h)\b|小时)/i);
-    if (hours) return `${hours[1]}h`;
-    if (/(daily|day\s+limit|today|今日|每天|日额度|日限制)/i.test(value)) return 'daily';
-    if (/(monthly|month\s+limit|本月|每月|月额度|月限制)/i.test(value)) return 'monthly';
+    const kinds = quotaKinds(text);
+    if (kinds.includes('weekly')) return 'weekly';
+    const hourly = kinds.find(kind => /^\d+(?:\.\d+)?h$/.test(kind));
+    if (hourly) return hourly;
+    if (kinds.includes('daily')) return 'daily';
+    if (kinds.includes('monthly')) return 'monthly';
     return 'unknown';
   }
 
@@ -98,8 +145,11 @@
     return { value: generic, kind, semantic: Boolean(kind) };
   }
 
-  function quotaFromContext(context, preferredValue = null) {
-    const id = quotaKind(context);
+  function quotaFromContext(context, preferredValue = null, forcedId = null) {
+    const kinds = quotaKinds(context);
+    if (forcedId && !kinds.includes(forcedId)) return null;
+    if (!forcedId && kinds.length !== 1) return null;
+    const id = forcedId || kinds[0] || 'unknown';
     if (id === 'unknown') return null;
     const percent = percentInfo(context, preferredValue);
     if (!percent) return null;
@@ -144,23 +194,29 @@
     return text.split(/\r?\n+/).map(clean).filter(Boolean).slice(0, 6000);
   }
 
-  function collectFromLines(byId) {
-    const lines = pageLines();
+  function collectQuotasFromLines(inputLines) {
+    const lines = Array.from(inputLines || []).map(clean).filter(Boolean);
+    const byId = new Map();
     for (let index = 0; index < lines.length; index += 1) {
-      const id = quotaKind(lines[index]);
-      if (id === 'unknown') continue;
+      const kinds = quotaKinds(lines[index]);
+      if (kinds.length !== 1) continue;
+      const id = kinds[0];
       let end = Math.min(lines.length, index + 10);
       for (let cursor = index + 1; cursor < end; cursor += 1) {
-        const nextId = quotaKind(lines[cursor]);
-        if (nextId !== 'unknown' && nextId !== id) {
+        if (quotaKinds(lines[cursor]).length) {
           end = cursor;
           break;
         }
       }
-      const context = lines.slice(Math.max(0, index - 1), end).join(' | ');
-      const quota = quotaFromContext(context);
-      if (quota && quota.id === id) addQuota(byId, quota);
+      const context = lines.slice(index, end).join(' | ');
+      const quota = quotaFromContext(context, null, id);
+      if (quota?.id === id) addQuota(byId, quota);
     }
+    return [...byId.values()];
+  }
+
+  function collectFromLines(byId) {
+    for (const quota of collectQuotasFromLines(pageLines())) addQuota(byId, quota);
   }
 
   function collectFromProgress(byId) {
@@ -169,14 +225,20 @@
       const own = clean(element.getAttribute('aria-valuetext') || element.getAttribute('aria-valuenow') || element.textContent || '');
       const preferredValue = finite(own);
       let node = element;
-      let context = own;
+      let context = null;
+      let id = null;
       for (let depth = 0; node && depth < 7; depth += 1, node = node.parentElement) {
         const text = clean(node.innerText || node.textContent || '');
         if (!text || text.length > 1000) continue;
-        context = text;
-        if (quotaKind(text) !== 'unknown' && /(%|remaining|left|available|used|usage|reset|renew|剩余|已用|重置|恢复)/i.test(text)) break;
+        const kinds = quotaKinds(text);
+        if (kinds.length > 1) continue;
+        if (kinds.length === 1 && /(%|remaining|left|available|used|usage|reset|renew|剩余|已用|重置|恢复)/i.test(text)) {
+          context = text;
+          [id] = kinds;
+          break;
+        }
       }
-      addQuota(byId, quotaFromContext(context, preferredValue));
+      if (context && id) addQuota(byId, quotaFromContext(context, preferredValue, id));
     }
   }
 
@@ -187,8 +249,8 @@
     const quotas = [...byId.values()]
       .map(({ _score, ...quota }) => quota)
       .sort((a, b) => {
-        if (a.id === 'weekly') return -1;
-        if (b.id === 'weekly') return 1;
+        if (a.id === 'weekly') return 1;
+        if (b.id === 'weekly') return -1;
         const ah = finite(a.id);
         const bh = finite(b.id);
         if (ah != null && bh != null) return ah - bh;
@@ -200,7 +262,7 @@
       quotas,
       url: location.href,
       diagnostics: {
-        primarySource: 'adaptive-usage-text',
+        primarySource: 'adaptive-usage-text-v2',
         lifecycle: 'short-lived-hidden-worker',
         quotaCount: quotas.length
       }
@@ -275,10 +337,12 @@
 
   window.__TOKEN_ON_KINDLE_CODEX_TEST__ = {
     quotaKind,
+    quotaKinds,
     resetText,
     percentInfo,
     quotaFromContext,
-    mergeQuota
+    mergeQuota,
+    collectQuotasFromLines
   };
 
   function start() {
