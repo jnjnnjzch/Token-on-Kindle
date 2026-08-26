@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const extractorUrl = new URL('../web/extractor.js', import.meta.url);
 const baseUrl = new URL('../web/extractor-base.js', import.meta.url);
+const codexReaderUrl = new URL('../web/codex-direct-reader.js', import.meta.url);
 const deepseekParserUrl = new URL('../shared/deepseek-response-parser-v2.mjs', import.meta.url);
 const deepseekSummaryUrl = new URL('../shared/deepseek-summary-parser.mjs', import.meta.url);
 const deepseekPlatformUrl = new URL('../shared/deepseek-platform-parser.mjs', import.meta.url);
@@ -149,8 +150,12 @@ if (observerStart >= 0) {
   const stableStart = `  function start() {
     toolbar();
     if (source === 'codex') {
-      setTimeout(() => collectAndSignal({ automatic: true }), 2500);
-      setTimeout(() => collectAndSignal({ automatic: true }), 7000);
+      setTimeout(() => window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true, startup: true }), 2500);
+      setTimeout(() => {
+        if (!window.__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__) {
+          window.__TOKEN_ON_KINDLE_SYNC__?.({ automatic: true, startup: true });
+        }
+      }, 7000);
     } else if (source === 'deepseek') {
       setToolbarStatus('等待 DeepSeek Platform 内部接口读取器');
     } else {
@@ -164,6 +169,7 @@ if (canonical.includes("window.addEventListener('beforeunload'")) throw new Erro
 if (canonical.includes('hide.onclick = () => window.close()')) throw new Error('source hide button still closes the webview');
 
 const moduleFunction = async (url, from, to) => lf(await readFile(url, 'utf8')).replace(from, to);
+const codexReader = lf(await readFile(codexReaderUrl, 'utf8'));
 const deepseekParser = await moduleFunction(deepseekParserUrl, 'export function parseDeepSeekResponses', 'function parseDeepSeekResponses');
 const deepseekSummary = await moduleFunction(deepseekSummaryUrl, 'export function parseDeepSeekSummaryText', 'function parseDeepSeekSummaryText');
 const deepseekPlatform = await moduleFunction(deepseekPlatformUrl, 'export function parseDeepSeekPlatformPayloads', 'function parseDeepSeekPlatformPayloads');
@@ -203,8 +209,10 @@ const volcengineModules = guarded(
   volcengineParser,
   'window.__TOKEN_ON_KINDLE_PARSE_VOLCENGINE_INTERNAL_API__ = parseVolcengineInternalApiPayloads;'
 );
-const output = `${GENERATED}\n${signalCompactor}\n${deepseekModules}\n${volcengineModules}\n${BASE_START}\n${canonical.trim()}\n${BASE_END}\n${deepseekReader}\n${volcengineReader}\n`;
+const output = `${GENERATED}\n${signalCompactor}\n${deepseekModules}\n${volcengineModules}\n${BASE_START}\n${canonical.trim()}\n${BASE_END}\n${codexReader}\n${deepseekReader}\n${volcengineReader}\n`;
 
+if (!output.includes('codex-adaptive-v0.9.16')) throw new Error('adaptive Codex quota reader missing');
+if (!output.includes('short-lived-hidden-worker')) throw new Error('Codex short-lived worker lifecycle missing');
 if (!output.includes('platform-internal-api')) throw new Error('DeepSeek direct reader missing');
 if (!output.includes('GetAgentPlanSeatAFPUsage')) throw new Error('Volcengine AFP internal API worker missing');
 if (!output.includes('GetAgentPlanSeatUsageDetails')) throw new Error('Volcengine model internal API worker missing');
@@ -224,4 +232,4 @@ if (output.includes('VOLCENGINE_WINDOWS') || output.includes('collectVolcengineW
 }
 const current = await readFile(extractorUrl, 'utf8').catch(() => '');
 if (lf(current) !== output) await writeFile(extractorUrl, output);
-console.log('Composed stable Codex/DeepSeek readers and Volcengine internal API worker');
+console.log('Composed adaptive Codex reader, stable DeepSeek reader, and Volcengine internal API worker');
