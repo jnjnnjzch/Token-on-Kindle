@@ -60,6 +60,7 @@ test('Codex renders 5-hour quota on the left and weekly quota on the right', () 
   const weeklyReset = ctx.operations.find(item => item.type === 'text' && item.text.includes('Aug 30'));
   assert.ok(hourlyReset);
   assert.ok(weeklyReset);
+  assert.notEqual(hourlyReset.text, weeklyReset.text, 'weekly reset must never reuse the rendered 5h reset text');
   assert.ok(hourlyReset.x < weeklyReset.x);
 });
 
