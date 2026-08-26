@@ -64,6 +64,8 @@ fn compose_extractor() {
         .unwrap_or_else(|error| panic!("read {}: {error}", target.display()));
     for marker in [
         "TOKEN-ON-KINDLE DIRECT API WORKERS BUILD",
+        "codex-adaptive-v0.9.16",
+        "short-lived-hidden-worker",
         "platform-internal-api",
         "GetAgentPlanSeatAFPUsage",
         "GetAgentPlanSeatUsageDetails",
@@ -108,6 +110,7 @@ fn main() {
         "Cargo.toml",
         "../tools/compose-extractor.mjs",
         "../web/extractor-base.js",
+        "../web/codex-direct-reader.js",
         "../web/deepseek-direct-reader.js",
         "../web/volcengine-direct-reader.js",
         "../shared/deepseek-response-parser-v2.mjs",
