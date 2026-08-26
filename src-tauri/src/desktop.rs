@@ -347,6 +347,11 @@ fn create_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn rebuild_menu(_app: &AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn rebuild_menu(app: &AppHandle) -> Result<(), String> {
     let Some(tray) = app.tray_by_id("main") else {
@@ -471,6 +476,13 @@ pub(crate) fn build_tray(_app: &tauri::App) -> tauri::Result<()> {
 pub(crate) fn handle_window_event(window: &Window, event: &tauri::WindowEvent) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        // Codex is intentionally disposable. Its ChatGPT SPA is the heaviest provider page and
+        // repeatedly reloading a hidden WebView can retain enough renderer state to hit OOM.
+        // Let Codex close for real; ensure_source_window() recreates it with the same persistent
+        // WebView data directory on the next manual/scheduled refresh, so the login session remains.
+        if window.label() == "codex" {
+            return;
+        }
         if window.label() != "main"
             || window
                 .app_handle()
