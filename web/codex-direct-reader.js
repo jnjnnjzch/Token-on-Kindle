@@ -273,6 +273,14 @@
     }
   }
 
+  window.__TOKEN_ON_KINDLE_CODEX_TEST__ = {
+    quotaKind,
+    resetText,
+    percentInfo,
+    quotaFromContext,
+    mergeQuota
+  };
+
   function start() {
     window.__TOKEN_ON_KINDLE_SYNC__ = directSync;
     installToolbarOverride();
