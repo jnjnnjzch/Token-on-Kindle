@@ -48,18 +48,23 @@ run_update() {
 
 paint_cached_screen() {
     if [ -z "${OUTPUT_FILE:-}" ] || [ ! -s "$OUTPUT_FILE" ]; then
+        log "Suspend paint skipped: no cached dashboard"
         return 0
     fi
     if ! command -v eips >/dev/null 2>&1; then
+        log "Suspend paint skipped: eips not found"
         return 0
     fi
-    # On no-framework/Special Offers setups KOReader may decline to draw its own
-    # Screensaver widget. powerd is still authoritative for suspend, so paint the
-    # same native-size cache when it has actually entered Screen Saver state.
-    if lipc-get-prop com.lab126.powerd status 2>/dev/null | grep -q "Screen Saver"; then
-        eips -f -g "$OUTPUT_FILE" >/dev/null 2>&1 || true
-        log "Cached dashboard painted for suspend"
-    fi
+
+    # Important: readyToSuspend is itself the authoritative signal that the Kindle
+    # is about to enter suspend. On no-framework/Special Offers paths KOReader may
+    # deliberately skip Screensaver:show(), and powerd's textual status can still
+    # be in a pre-suspend state at this exact moment. Requiring status ==
+    # "Screen Saver" here therefore races the state transition and can suppress
+    # the only paint. Paint unconditionally on readyToSuspend; this mirrors the
+    # normal KOReader order (draw first, then powerd:beforeSuspend()).
+    eips -f -g "$OUTPUT_FILE" >/dev/null 2>&1 || true
+    log "Cached dashboard painted at readyToSuspend"
 }
 
 if ! load_config; then
