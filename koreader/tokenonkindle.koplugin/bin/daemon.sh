@@ -51,8 +51,11 @@ if ! load_config; then
     exit 2
 fi
 
-NEXT_UPDATE=0
-log "No-framework-compatible helper started"
+# The UI performs the explicit first sync after saving a URL. Starting the
+# daemon with a full interval avoids two writers racing for dashboard.png.part.
+NOW="$(date +%s)"
+NEXT_UPDATE=$(( NOW + INTERVAL_SECONDS ))
+log "No-framework-compatible helper started; next update in $INTERVAL_SECONDS seconds"
 
 while :; do
     if ! load_config; then
@@ -61,12 +64,6 @@ while :; do
     fi
 
     NOW="$(date +%s)"
-    if [ "$NEXT_UPDATE" -le "$NOW" ]; then
-        run_update || true
-        NOW="$(date +%s)"
-        NEXT_UPDATE=$(( NOW + INTERVAL_SECONDS ))
-    fi
-
     REMAINING=$(( NEXT_UPDATE - NOW ))
     if [ "$REMAINING" -lt 1 ]; then
         REMAINING=1
