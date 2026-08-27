@@ -59,7 +59,7 @@ test('KT2 output remains native 600x800 and documentation explains no-framework 
   assert.match(renderer, /width: 600/);
   assert.match(renderer, /height: 800/);
   assert.match(readme, /Start KOReader \(no framework\)/);
-  assert.match(readme, /linkss is a mirror, not the active no-framework sleep-screen mechanism/i);
+  assert.match(readme, /`linkss` is a mirror, not the active no-framework sleep-screen mechanism/i);
   assert.match(readme, /rtcWakeup/);
 });
 
