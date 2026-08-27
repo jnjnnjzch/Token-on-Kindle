@@ -4,6 +4,9 @@ set -u
 
 CONFIG_FILE="/mnt/us/token-on-kindle/config.sh"
 LOG_FILE="/tmp/token-on-kindle-helper.log"
+LOCK_DIR="/tmp/token-on-kindle-update.lock"
+LOCK_HELD=0
+WIFI_WAS_OFF=0
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG_FILE"
@@ -13,11 +16,53 @@ restore_wifi() {
     if [ "${WIFI_WAS_OFF:-0}" = "1" ]; then
         lipc-set-prop -i com.lab126.wifid enable 0 >/dev/null 2>&1 || true
         lipc-set-prop -i com.lab126.cmd wirelessEnable 0 >/dev/null 2>&1 || true
+        WIFI_WAS_OFF=0
         log "Wi-Fi restored to off"
     fi
 }
 
-trap restore_wifi EXIT INT TERM
+cleanup() {
+    restore_wifi
+    if [ "$LOCK_HELD" = "1" ]; then
+        rm -rf "$LOCK_DIR"
+        LOCK_HELD=0
+    fi
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+acquire_lock() {
+    ATTEMPTS=0
+    while [ "$ATTEMPTS" -lt 35 ]; do
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo "$$" > "$LOCK_DIR/pid"
+            LOCK_HELD=1
+            return 0
+        fi
+
+        OWNER="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+        case "$OWNER" in
+            ''|*[!0-9]*)
+                rm -rf "$LOCK_DIR" 2>/dev/null || true
+                ;;
+            *)
+                if ! kill -0 "$OWNER" >/dev/null 2>&1; then
+                    rm -rf "$LOCK_DIR" 2>/dev/null || true
+                else
+                    sleep 1
+                fi
+                ;;
+        esac
+        ATTEMPTS=$(( ATTEMPTS + 1 ))
+    done
+    log "Timed out waiting for another dashboard update"
+    return 1
+}
+
+if ! acquire_lock; then
+    exit 7
+fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
     log "Missing config: $CONFIG_FILE"
@@ -39,7 +84,6 @@ TMP_FILE="${OUTPUT_FILE}.part"
 mkdir -p "$(dirname "$OUTPUT_FILE")" || exit 3
 rm -f "$TMP_FILE"
 
-WIFI_WAS_OFF=0
 # Match the legacy Online Screen Saver query form known to work on older Kindles.
 WIFI_STATE="$(lipc-get-prop com.lab126.cmd wirelessEnable 2>/dev/null || echo 1)"
 if [ "$WIFI_STATE" != "1" ]; then
