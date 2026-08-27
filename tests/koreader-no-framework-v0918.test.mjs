@@ -35,6 +35,15 @@ test('KOReader sleep screen is a stable fixed document cover, independent of lin
   assert.doesNotMatch(main, /screensaver_type", "random_image"/);
 });
 
+test('no-framework mode has a framebuffer fallback even when KOReader declines its native Screensaver widget', () => {
+  assert.match(main, /os\.getenv\("STOP_FRAMEWORK"\) == "yes"/);
+  assert.match(main, /not native_screensaver and no_framework_fallback/);
+  assert.match(main, /no-framework helper fallback/);
+  assert.match(daemon, /paint_cached_screen\(\)/);
+  assert.match(daemon, /readyToSuspend\*\)[\s\S]*paint_cached_screen/);
+  assert.match(daemon, /eips -f -g "\$OUTPUT_FILE"/);
+});
+
 test('background helper is independent of Amazon lab126_gui and uses powerd RTC wakeups', () => {
   assert.match(daemon, /readyToSuspend,wakeupFromSuspend,resuming/);
   assert.match(daemon, /com\.lab126\.powerd rtcWakeup/);
