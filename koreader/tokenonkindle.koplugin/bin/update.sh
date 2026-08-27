@@ -40,7 +40,8 @@ mkdir -p "$(dirname "$OUTPUT_FILE")" || exit 3
 rm -f "$TMP_FILE"
 
 WIFI_WAS_OFF=0
-WIFI_STATE="$(lipc-get-prop -i com.lab126.cmd wirelessEnable 2>/dev/null || echo 1)"
+# Match the legacy Online Screen Saver query form known to work on older Kindles.
+WIFI_STATE="$(lipc-get-prop com.lab126.cmd wirelessEnable 2>/dev/null || echo 1)"
 if [ "$WIFI_STATE" != "1" ]; then
     WIFI_WAS_OFF=1
     log "Wi-Fi is off; enabling it for this update"
@@ -51,7 +52,9 @@ fi
 DEADLINE=$(( $(date +%s) + NETWORK_TIMEOUT ))
 DOWNLOADED=0
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    if curl -fL --connect-timeout 3 --max-time 8 \
+    # Keep the curl options conservative for KT2-era firmware. The outer loop
+    # supplies the overall network timeout and retries while Wi-Fi associates.
+    if curl -fL -m 8 \
         -H 'Cache-Control: no-cache' \
         -H 'User-Agent: Token-on-Kindle/0.9.18 Kindle-helper' \
         "$IMAGE_URL" -o "$TMP_FILE" >/dev/null 2>&1; then
