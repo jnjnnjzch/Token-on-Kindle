@@ -46,13 +46,21 @@ test('background helper is independent of Amazon lab126_gui and uses powerd RTC 
 test('sleep updater restores Wi-Fi, uses the LAN image directly, mirrors linkss, and repaints only in Screen Saver state', () => {
   assert.match(update, /com\.lab126\.cmd wirelessEnable 1/);
   assert.match(update, /com\.lab126\.wifid enable 1/);
-  assert.match(update, /curl -fL[\s\S]*"\$IMAGE_URL"/);
+  assert.match(update, /curl -fL -m 8[\s\S]*"\$IMAGE_URL"/);
   assert.doesNotMatch(update, /TEST_DOMAIN|ping -c/);
   assert.match(update, /mv -f "\$TMP_FILE" "\$OUTPUT_FILE"/);
   assert.match(update, /linkss mirror updated/);
   assert.match(update, /grep -q "Screen Saver"/);
   assert.match(update, /eips -f -g "\$OUTPUT_FILE"/);
   assert.match(update, /WIFI_WAS_OFF/);
+});
+
+test('manual and RTC refreshes are serialized and daemon startup does not race the first UI sync', () => {
+  assert.match(update, /LOCK_DIR="\/tmp\/token-on-kindle-update\.lock"/);
+  assert.match(update, /if mkdir "\$LOCK_DIR"/);
+  assert.match(update, /kill -0 "\$OWNER"/);
+  assert.match(daemon, /NEXT_UPDATE=\$\(\( NOW \+ INTERVAL_SECONDS \)\)/);
+  assert.doesNotMatch(daemon, /NEXT_UPDATE=0/);
 });
 
 test('KT2 output remains native 600x800 and documentation explains no-framework ownership', () => {
