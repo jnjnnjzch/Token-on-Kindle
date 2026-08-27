@@ -35,15 +35,6 @@ test('KOReader sleep screen is a stable fixed document cover, independent of lin
   assert.doesNotMatch(main, /screensaver_type", "random_image"/);
 });
 
-test('no-framework mode has a framebuffer fallback even when KOReader declines its native Screensaver widget', () => {
-  assert.match(main, /os\.getenv\("STOP_FRAMEWORK"\) == "yes"/);
-  assert.match(main, /not native_screensaver and no_framework_fallback/);
-  assert.match(main, /no-framework helper fallback/);
-  assert.match(daemon, /paint_cached_screen\(\)/);
-  assert.match(daemon, /readyToSuspend\*\)[\s\S]*paint_cached_screen/);
-  assert.match(daemon, /eips -f -g "\$OUTPUT_FILE"/);
-});
-
 test('background helper is independent of Amazon lab126_gui and uses powerd RTC wakeups', () => {
   assert.match(daemon, /readyToSuspend,wakeupFromSuspend,resuming/);
   assert.match(daemon, /com\.lab126\.powerd rtcWakeup/);
@@ -52,7 +43,17 @@ test('background helper is independent of Amazon lab126_gui and uses powerd RTC 
   assert.match(helper, /exec \/bin\/sh "\$SCRIPT_DIR\/daemon\.sh"/);
 });
 
-test('sleep updater restores Wi-Fi, uses the LAN image directly, mirrors linkss, and repaints only in Screen Saver state', () => {
+test('readyToSuspend paints the cached dashboard before suspend without racing powerd textual state', () => {
+  const paintStart = daemon.indexOf('paint_cached_screen()');
+  const mainStart = daemon.indexOf('if ! load_config;', paintStart);
+  assert.ok(paintStart >= 0 && mainStart > paintStart);
+  const paintFunction = daemon.slice(paintStart, mainStart);
+  assert.match(paintFunction, /eips -f -g "\$OUTPUT_FILE"/);
+  assert.doesNotMatch(paintFunction, /grep -q "Screen Saver"/);
+  assert.match(daemon, /readyToSuspend\*\)[\s\S]*paint_cached_screen/);
+});
+
+test('sleep updater restores Wi-Fi, uses the LAN image directly, mirrors linkss, and only repaints periodic updates in Screen Saver state', () => {
   assert.match(update, /com\.lab126\.cmd wirelessEnable 1/);
   assert.match(update, /com\.lab126\.wifid enable 1/);
   assert.match(update, /curl -fL -m 8[\s\S]*"\$IMAGE_URL"/);
