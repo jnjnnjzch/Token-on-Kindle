@@ -1,30 +1,26 @@
 local DataStorage = require("datastorage")
-local FFIUtil = require("ffi/util")
+local Device = require("device")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local LuaSettings = require("luasettings")
-local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local lfs = require("libs/libkoreader-lfs")
-local ltn12 = require("ltn12")
-local http = require("socket.http")
-local logger = require("logger")
 local _ = require("gettext")
 
 local DEFAULT_URL = "http://192.168.1.2:8765/dashboard.png"
 local DEFAULT_INTERVAL_MINUTES = 10
+local DATA_DIR = "/mnt/us/token-on-kindle"
+local OUTPUT_FILE = DATA_DIR .. "/dashboard.png"
+local CONFIG_FILE = DATA_DIR .. "/config.sh"
 local LINKSS_DIR = "/mnt/us/linkss/screensavers"
+local LINKSS_FILE = LINKSS_DIR .. "/bg_xsmall_ss00.png"
+local PID_FILE = "/tmp/token-on-kindle-helper.pid"
 
 local TokenOnKindle = WidgetContainer:extend{
     name = "token_on_kindle",
+    is_doc_only = false,
     settings = nil,
-    output_dir = nil,
-    output_file = nil,
-    scheduled_task = nil,
-    syncing = false,
-    last_sync = nil,
-    last_error = nil,
 }
 
 local function ensureDirectory(path)
@@ -34,18 +30,18 @@ local function ensureDirectory(path)
     return lfs.mkdir(path) ~= nil
 end
 
-local function readPngSignature(path)
-    local file = io.open(path, "rb")
-    if not file then
-        return nil
-    end
-    local signature = file:read(8)
-    file:close()
-    return signature
+local function shellQuote(value)
+    return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
 end
 
 local function isPng(path)
-    return readPngSignature(path) == "\137PNG\13\10\26\10"
+    local file = io.open(path, "rb")
+    if not file then
+        return false
+    end
+    local signature = file:read(8)
+    file:close()
+    return signature == "\137PNG\13\10\26\10"
 end
 
 function TokenOnKindle:init()
@@ -55,28 +51,22 @@ function TokenOnKindle:init()
         DataStorage:getSettingsDir() .. "/token_on_kindle.lua"
     )
 
-    local screensaver_root = DataStorage:getFullDataDir() .. "/screensavers"
-    ensureDirectory(screensaver_root)
-    self.output_dir = screensaver_root .. "/token-on-kindle"
-    ensureDirectory(self.output_dir)
-    self.output_file = self.output_dir .. "/dashboard.png"
-
     if self.settings:hasNot("url") then
         self.settings:saveSetting("url", DEFAULT_URL)
     end
     if self.settings:hasNot("interval_minutes") then
         self.settings:saveSetting("interval_minutes", DEFAULT_INTERVAL_MINUTES)
     end
-    if self.settings:hasNot("auto_sync") then
-        self.settings:makeTrue("auto_sync")
-    end
-    if self.settings:hasNot("mirror_linkss") then
-        self.settings:makeFalse("mirror_linkss")
+    if self.settings:hasNot("background_enabled") then
+        self.settings:makeFalse("background_enabled")
     end
     self.settings:flush()
 
-    if self.settings:isTrue("auto_sync") then
-        self:scheduleNextSync(2)
+    ensureDirectory(DATA_DIR)
+    self:writeHelperConfig()
+
+    if Device:isKindle() and self.settings:isTrue("background_enabled") then
+        self:startHelper(false)
     end
 end
 
@@ -84,12 +74,24 @@ function TokenOnKindle:getUrl()
     return self.settings:readSetting("url", DEFAULT_URL)
 end
 
-function TokenOnKindle:getIntervalSeconds()
+function TokenOnKindle:isConfigured()
+    local url = self:getUrl()
+    return type(url) == "string"
+        and url ~= ""
+        and url ~= DEFAULT_URL
+        and url:match("^https?://") ~= nil
+end
+
+function TokenOnKindle:getIntervalMinutes()
     local minutes = tonumber(self.settings:readSetting(
         "interval_minutes",
         DEFAULT_INTERVAL_MINUTES
     )) or DEFAULT_INTERVAL_MINUTES
-    return math.max(1, minutes) * 60
+    return math.max(1, math.floor(minutes))
+end
+
+function TokenOnKindle:getHelperPath()
+    return self.path .. "/bin/helper.sh"
 end
 
 function TokenOnKindle:showMessage(message, timeout)
@@ -99,143 +101,137 @@ function TokenOnKindle:showMessage(message, timeout)
     })
 end
 
-function TokenOnKindle:copyToLinkss()
-    if not self.settings:isTrue("mirror_linkss") then
-        return true
-    end
-    if lfs.attributes(LINKSS_DIR, "mode") ~= "directory" then
-        return nil, _("linkss screensaver folder was not found.")
+function TokenOnKindle:writeHelperConfig()
+    ensureDirectory(DATA_DIR)
+    local file = io.open(CONFIG_FILE .. ".tmp", "w")
+    if not file then
+        return false
     end
 
-    local target = LINKSS_DIR .. "/token-on-kindle.png"
-    -- KOReader's ffi.util.copyFile returns nil on success and an error string
-    -- on failure; it is not a boolean-returning function.
-    local copy_error = FFIUtil.copyFile(self.output_file, target)
-    if copy_error then
-        return nil, _("Could not copy the dashboard to linkss.")
-            .. "\n" .. tostring(copy_error)
+    local url = self:isConfigured() and self:getUrl() or ""
+    file:write("IMAGE_URL=", shellQuote(url), "\n")
+    file:write("INTERVAL_SECONDS=", tostring(self:getIntervalMinutes() * 60), "\n")
+    file:write("OUTPUT_FILE=", shellQuote(OUTPUT_FILE), "\n")
+    file:write("LINKSS_FILE=", shellQuote(LINKSS_FILE), "\n")
+    file:write("NETWORK_TIMEOUT=25\n")
+    file:close()
+
+    return os.rename(CONFIG_FILE .. ".tmp", CONFIG_FILE) ~= nil
+end
+
+function TokenOnKindle:runHelper(action)
+    if not Device:isKindle() then
+        return false
+    end
+    local helper = self:getHelperPath()
+    if lfs.attributes(helper, "mode") ~= "file" then
+        return false
+    end
+    self:writeHelperConfig()
+    local command = "/bin/sh " .. shellQuote(helper) .. " " .. shellQuote(action)
+    return os.execute(command) == 0
+end
+
+function TokenOnKindle:helperRunning()
+    local file = io.open(PID_FILE, "r")
+    if not file then
+        return false
+    end
+    local pid = tonumber(file:read("*l"))
+    file:close()
+    if not pid then
+        return false
+    end
+    return os.execute("kill -0 " .. tostring(pid) .. " >/dev/null 2>&1") == 0
+end
+
+function TokenOnKindle:startHelper(show_result)
+    if not self:isConfigured() then
+        if show_result then
+            self:showMessage(_("Set the dashboard URL first."))
+        end
+        return false
+    end
+    local ok = self:runHelper("start")
+    if show_result then
+        self:showMessage(ok
+            and _("Background updater started.")
+            or _("Could not start the background updater."), 2)
+    end
+    return ok
+end
+
+function TokenOnKindle:stopHelper(show_result)
+    local ok = self:runHelper("stop")
+    if show_result then
+        self:showMessage(ok
+            and _("Background updater stopped.")
+            or _("Could not stop the background updater."), 2)
+    end
+    return ok
+end
+
+function TokenOnKindle:configureKoreaderSleepScreen(show_result)
+    if not Device:isKindle() or not Device:supportsScreensaver() then
+        if show_result then
+            self:showMessage(_("This Kindle cannot use KOReader's custom sleep screen."))
+        end
+        return false
+    end
+
+    G_reader_settings:saveSetting("screensaver_type", "document_cover")
+    G_reader_settings:saveSetting("screensaver_document_cover", OUTPUT_FILE)
+    G_reader_settings:saveSetting("screensaver_img_background", "black")
+    G_reader_settings:makeFalse("screensaver_show_message")
+    G_reader_settings:flush()
+
+    if show_result then
+        self:showMessage(_("Token on Kindle is now the KOReader sleep screen."), 3)
     end
     return true
 end
 
-function TokenOnKindle:downloadDashboard(show_result)
-    if self.syncing then
+function TokenOnKindle:syncNow(show_result)
+    if not self:isConfigured() then
         if show_result then
-            self:showMessage(_("A Token on Kindle sync is already running."), 2)
+            self:showMessage(_("Set the dashboard URL first."))
         end
-        return
+        return false
     end
 
-    self.syncing = true
-    local temporary_file = self.output_file .. ".part"
-    os.remove(temporary_file)
-
-    local file, open_error = io.open(temporary_file, "wb")
-    if not file then
-        self.syncing = false
-        self.last_error = tostring(open_error)
-        if show_result then
-            self:showMessage(_("Could not open the temporary image file."))
-        end
-        return
+    local progress
+    if show_result then
+        progress = InfoMessage:new{ text = _("Updating Token on Kindle…") }
+        UIManager:show(progress)
+        UIManager:forceRePaint()
     end
 
-    http.TIMEOUT = 25
-    local ok, code, _, status = http.request{
-        url = self:getUrl(),
-        sink = ltn12.sink.file(file),
-        redirect = true,
-        headers = {
-            ["Cache-Control"] = "no-cache",
-            ["User-Agent"] = "KOReader Token-on-Kindle/0.1",
-        },
-    }
+    local ok = self:runHelper("once")
 
-    local success = ok ~= nil and tonumber(code) == 200
-    if success and not isPng(temporary_file) then
-        success = false
-        status = _("The downloaded file is not a PNG image.")
+    if progress then
+        UIManager:close(progress)
     end
 
-    if success then
-        os.remove(self.output_file)
-        local renamed, rename_error = os.rename(temporary_file, self.output_file)
-        if not renamed then
-            success = false
-            status = tostring(rename_error)
-        end
-    end
-
-    if success then
-        local mirrored, mirror_error = self:copyToLinkss()
-        if not mirrored then
-            success = false
-            status = mirror_error
-        end
-    end
-
-    if success then
-        self.last_sync = os.time()
-        self.last_error = nil
-        self.settings:saveSetting("last_sync", self.last_sync)
+    if ok and isPng(OUTPUT_FILE) then
+        self.settings:saveSetting("last_sync", os.time())
         self.settings:flush()
+        self:configureKoreaderSleepScreen(false)
         if show_result then
-            self:showMessage(_("Token on Kindle dashboard updated."), 2)
-        end
-    else
-        os.remove(temporary_file)
-        self.last_error = tostring(status or code or _("Unknown download error"))
-        logger.warn("TokenOnKindle: sync failed:", self.last_error)
-        if show_result then
+            local mirrored = lfs.attributes(LINKSS_DIR, "mode") == "directory"
             self:showMessage(
-                _("Token on Kindle sync failed:") .. "\n" .. self.last_error
+                mirrored
+                    and _("Dashboard updated; KOReader and linkss now use the new image.")
+                    or _("Dashboard updated; KOReader now uses the new image."),
+                3
             )
         end
+        return true
     end
 
-    self.syncing = false
-end
-
-function TokenOnKindle:syncNow(show_result)
-    NetworkMgr:runWhenOnline(function()
-        self:downloadDashboard(show_result)
-    end)
-end
-
-function TokenOnKindle:cancelScheduledSync()
-    if self.scheduled_task then
-        UIManager:unschedule(self.scheduled_task)
-        self.scheduled_task = nil
+    if show_result then
+        self:showMessage(_("Dashboard update failed. Check the URL, Wi-Fi, and helper log."))
     end
-end
-
-function TokenOnKindle:scheduleNextSync(delay_seconds)
-    self:cancelScheduledSync()
-    if not self.settings:isTrue("auto_sync") then
-        return
-    end
-
-    self.scheduled_task = function()
-        self.scheduled_task = nil
-        self:syncNow(false)
-        self:scheduleNextSync(self:getIntervalSeconds())
-    end
-    UIManager:scheduleIn(delay_seconds or self:getIntervalSeconds(), self.scheduled_task)
-end
-
-function TokenOnKindle:configureKoreaderSleepScreen()
-    G_reader_settings:saveSetting("screensaver_type", "random_image")
-    G_reader_settings:saveSetting("screensaver_dir", self.output_dir)
-    G_reader_settings:saveSetting("screensaver_img_background", "black")
-    G_reader_settings:makeFalse("screensaver_show_message")
-    G_reader_settings:makeFalse("screensaver_rotate_auto_for_best_fit")
-    G_reader_settings:makeFalse("screensaver_stretch_images")
-    G_reader_settings:flush()
-
-    self:showMessage(
-        _("KOReader's sleep screen now uses the Token on Kindle image."),
-        3
-    )
+    return false
 end
 
 function TokenOnKindle:editUrl()
@@ -244,32 +240,25 @@ function TokenOnKindle:editUrl()
         title = _("Token on Kindle image URL"),
         input = self:getUrl(),
         input_hint = "http://192.168.x.x:8765/dashboard.png",
-        description = _("Use the URL shown by the desktop Token on Kindle app. The computer and Kindle must be on the same local network."),
-        buttons = {
-            {
-                {
-                    text = _("Cancel"),
-                    callback = function()
-                        UIManager:close(dialog)
-                    end,
-                },
-                {
-                    text = _("Save"),
-                    is_enter_default = true,
-                    callback = function()
-                        local value = dialog:getInputText()
-                        if value and value:match("^https?://") then
-                            self.settings:saveSetting("url", value)
-                            self.settings:flush()
-                            UIManager:close(dialog)
-                            self:syncNow(true)
-                        else
-                            self:showMessage(_("Please enter an http:// or https:// URL."))
-                        end
-                    end,
-                },
-            },
-        },
+        description = _("Use the dashboard.png URL shown by the desktop app."),
+        save_callback = function(value, closing)
+            if not value or not value:match("^https?://") then
+                return false, _("Please enter an http:// or https:// URL.")
+            end
+
+            self.settings:saveSetting("url", value)
+            self.settings:makeTrue("background_enabled")
+            self.settings:flush()
+            self:writeHelperConfig()
+            self:startHelper(false)
+
+            if closing then
+                UIManager:nextTick(function()
+                    self:syncNow(true)
+                end)
+            end
+            return true, _("URL saved.")
+        end,
     }
     UIManager:show(dialog)
     dialog:onShowKeyboard()
@@ -278,140 +267,100 @@ end
 function TokenOnKindle:setInterval(minutes)
     self.settings:saveSetting("interval_minutes", minutes)
     self.settings:flush()
-    self:scheduleNextSync(1)
+    self:writeHelperConfig()
+    if self.settings:isTrue("background_enabled") then
+        self:runHelper("restart")
+    end
 end
 
 function TokenOnKindle:getStatusText()
     local last_sync = self.settings:readSetting("last_sync")
-    local sync_text = _("Never")
-    if last_sync then
-        sync_text = os.date("%Y-%m-%d %H:%M:%S", last_sync)
-    end
-
-    local linkss_status = lfs.attributes(LINKSS_DIR, "mode") == "directory"
+    local sync_text = last_sync and os.date("%Y-%m-%d %H:%M:%S", last_sync) or _("Never")
+    local linkss = lfs.attributes(LINKSS_DIR, "mode") == "directory"
         and _("available") or _("not found")
+    local screensaver = Device:isKindle() and Device:supportsScreensaver()
+        and _("supported") or _("not supported")
+    local helper = self:helperRunning() and _("running") or _("stopped")
 
     return table.concat({
         _("URL:") .. "\n" .. self:getUrl(),
         "",
-        _("Cached image:") .. "\n" .. self.output_file,
+        _("Cached image:") .. "\n" .. OUTPUT_FILE,
         "",
-        _("Last successful sync:") .. " " .. sync_text,
-        _("Auto sync:") .. " " .. (self.settings:isTrue("auto_sync") and _("on") or _("off")),
-        _("Interval:") .. " " .. tostring(self.settings:readSetting("interval_minutes", DEFAULT_INTERVAL_MINUTES)) .. " " .. _("minutes"),
-        _("linkss:") .. " " .. linkss_status,
-        self.last_error and ("\n" .. _("Last error:") .. " " .. self.last_error) or "",
+        _("KOReader sleep screen:") .. " " .. screensaver,
+        _("linkss mirror:") .. " " .. linkss,
+        _("Background helper:") .. " " .. helper,
+        _("Interval:") .. " " .. tostring(self:getIntervalMinutes()) .. " " .. _("minutes"),
+        _("Last manual sync:") .. " " .. sync_text,
     }, "\n")
 end
 
 function TokenOnKindle:onResume()
-    if self.settings:isTrue("auto_sync") then
-        self:scheduleNextSync(2)
+    if Device:isKindle() and self.settings:isTrue("background_enabled") then
+        self:startHelper(false)
     end
-end
-
-function TokenOnKindle:onNetworkConnected()
-    if self.settings:isTrue("auto_sync") then
-        self:scheduleNextSync(1)
-    end
-end
-
-function TokenOnKindle:onSuspend()
-    -- Never start Wi-Fi or a blocking download while the device is suspending.
-    -- KOReader will use the last complete, atomically replaced dashboard image.
-end
-
-function TokenOnKindle:onClose()
-    self:cancelScheduledSync()
 end
 
 function TokenOnKindle:addToMainMenu(menu_items)
     menu_items.token_on_kindle = {
         text = _("Token on Kindle"),
+        sorting_hint = "more_tools",
         sub_item_table = {
             {
-                text = _("Sync dashboard now"),
-                keep_menu_open = true,
+                text = _("Update dashboard now"),
                 callback = function()
                     self:syncNow(true)
                 end,
             },
             {
-                text = _("Set image URL"),
-                keep_menu_open = true,
+                text = _("Set dashboard URL"),
                 callback = function()
                     self:editUrl()
                 end,
             },
             {
                 text = _("Use as KOReader sleep screen"),
-                keep_menu_open = true,
                 callback = function()
-                    self:configureKoreaderSleepScreen()
+                    self:configureKoreaderSleepScreen(true)
                 end,
             },
             {
-                text = _("Automatic sync"),
-                keep_menu_open = true,
+                text = _("Background updates during sleep"),
                 checked_func = function()
-                    return self.settings:isTrue("auto_sync")
+                    return self.settings:isTrue("background_enabled")
                 end,
                 callback = function()
-                    self.settings:toggle("auto_sync")
+                    self.settings:toggle("background_enabled")
                     self.settings:flush()
-                    if self.settings:isTrue("auto_sync") then
-                        self:scheduleNextSync(1)
+                    if self.settings:isTrue("background_enabled") then
+                        self:startHelper(true)
                     else
-                        self:cancelScheduledSync()
+                        self:stopHelper(true)
                     end
                 end,
             },
             {
-                text = _("Sync interval"),
+                text = _("Update interval"),
                 sub_item_table = {
                     {
                         text = _("10 minutes"),
-                        checked_func = function()
-                            return self.settings:readSetting("interval_minutes") == 10
-                        end,
+                        checked_func = function() return self:getIntervalMinutes() == 10 end,
                         callback = function() self:setInterval(10) end,
                     },
                     {
                         text = _("30 minutes"),
-                        checked_func = function()
-                            return self.settings:readSetting("interval_minutes") == 30
-                        end,
+                        checked_func = function() return self:getIntervalMinutes() == 30 end,
                         callback = function() self:setInterval(30) end,
                     },
                     {
                         text = _("60 minutes"),
-                        checked_func = function()
-                            return self.settings:readSetting("interval_minutes") == 60
-                        end,
+                        checked_func = function() return self:getIntervalMinutes() == 60 end,
                         callback = function() self:setInterval(60) end,
                     },
                 },
             },
             {
-                text = _("Mirror to Kindle linkss"),
-                enabled_func = function()
-                    return lfs.attributes(LINKSS_DIR, "mode") == "directory"
-                end,
-                checked_func = function()
-                    return self.settings:isTrue("mirror_linkss")
-                end,
-                callback = function()
-                    self.settings:toggle("mirror_linkss")
-                    self.settings:flush()
-                    if self.settings:isTrue("mirror_linkss") and isPng(self.output_file) then
-                        local ok, error_message = self:copyToLinkss()
-                        if not ok then self:showMessage(error_message) end
-                    end
-                end,
-            },
-            {
                 text = _("Status"),
-                keep_menu_open = true,
                 callback = function()
                     self:showMessage(self:getStatusText())
                 end,
