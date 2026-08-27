@@ -81,6 +81,10 @@ function TokenOnKindle:isConfigured()
         and url:match("^https?://") ~= nil
 end
 
+function TokenOnKindle:isNoFramework()
+    return os.getenv("STOP_FRAMEWORK") == "yes"
+end
+
 function TokenOnKindle:getIntervalMinutes()
     local minutes = tonumber(self.settings:readSetting(
         "interval_minutes",
@@ -171,9 +175,18 @@ function TokenOnKindle:stopHelper(show_result)
 end
 
 function TokenOnKindle:configureKoreaderSleepScreen(show_result)
-    if not Device:isKindle() or not Device:supportsScreensaver() then
+    if not Device:isKindle() then
         if show_result then
-            self:showMessage(_("This Kindle cannot use KOReader's custom sleep screen."))
+            self:showMessage(_("This plugin's sleep-screen integration is only available on Kindle."))
+        end
+        return false
+    end
+
+    local native_screensaver = Device:supportsScreensaver()
+    local no_framework_fallback = self:isNoFramework()
+    if not native_screensaver and not no_framework_fallback then
+        if show_result then
+            self:showMessage(_("KOReader cannot own the sleep screen on this Kindle in the current mode."))
         end
         return false
     end
@@ -184,8 +197,19 @@ function TokenOnKindle:configureKoreaderSleepScreen(show_result)
     G_reader_settings:makeFalse("screensaver_show_message")
     G_reader_settings:flush()
 
+    if not native_screensaver and no_framework_fallback then
+        self.settings:makeTrue("background_enabled")
+        self.settings:flush()
+        self:startHelper(false)
+    end
+
     if show_result then
-        self:showMessage(_("Token on Kindle is now the KOReader sleep screen."), 3)
+        self:showMessage(
+            native_screensaver
+                and _("Token on Kindle is now the KOReader sleep screen.")
+                or _("No-framework sleep-screen fallback enabled; the helper will paint the cached dashboard."),
+            3
+        )
     end
     return true
 end
@@ -277,8 +301,18 @@ function TokenOnKindle:getStatusText()
     local sync_text = last_sync and os.date("%Y-%m-%d %H:%M:%S", last_sync) or _("Never")
     local linkss = lfs.attributes(LINKSS_DIR, "mode") == "directory"
         and _("available") or _("not found")
-    local screensaver = Device:isKindle() and Device:supportsScreensaver()
-        and _("supported") or _("not supported")
+
+    local screensaver
+    if not Device:isKindle() then
+        screensaver = _("not a Kindle")
+    elseif Device:supportsScreensaver() then
+        screensaver = _("KOReader native")
+    elseif self:isNoFramework() then
+        screensaver = _("no-framework helper fallback")
+    else
+        screensaver = _("not supported")
+    end
+
     local helper = self:helperRunning() and _("running") or _("stopped")
 
     return table.concat({
@@ -286,7 +320,7 @@ function TokenOnKindle:getStatusText()
         "",
         _("Cached image:") .. "\n" .. OUTPUT_FILE,
         "",
-        _("KOReader sleep screen:") .. " " .. screensaver,
+        _("Sleep screen path:") .. " " .. screensaver,
         _("linkss mirror:") .. " " .. linkss,
         _("Background helper:") .. " " .. helper,
         _("Interval:") .. " " .. tostring(self:getIntervalMinutes()) .. " " .. _("minutes"),
