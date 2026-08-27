@@ -46,6 +46,22 @@ run_update() {
     return "$rc"
 }
 
+paint_cached_screen() {
+    if [ -z "${OUTPUT_FILE:-}" ] || [ ! -s "$OUTPUT_FILE" ]; then
+        return 0
+    fi
+    if ! command -v eips >/dev/null 2>&1; then
+        return 0
+    fi
+    # On no-framework/Special Offers setups KOReader may decline to draw its own
+    # Screensaver widget. powerd is still authoritative for suspend, so paint the
+    # same native-size cache when it has actually entered Screen Saver state.
+    if lipc-get-prop com.lab126.powerd status 2>/dev/null | grep -q "Screen Saver"; then
+        eips -f -g "$OUTPUT_FILE" >/dev/null 2>&1 || true
+        log "Cached dashboard painted for suspend"
+    fi
+}
+
 if ! load_config; then
     log "Daemon cannot start without config"
     exit 2
@@ -76,6 +92,7 @@ while :; do
 
     case "$EVENT" in
         readyToSuspend*)
+            paint_cached_screen
             REMAINING=$(( NEXT_UPDATE - NOW ))
             if [ "$REMAINING" -gt 0 ]; then
                 lipc-set-prop -i com.lab126.powerd rtcWakeup "$REMAINING" >/dev/null 2>&1 || true
