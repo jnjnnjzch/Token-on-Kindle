@@ -1,5 +1,6 @@
 local DataStorage = require("datastorage")
 local Device = require("device")
+local FFIUtil = require("ffi/util")
 local InfoMessage = require("ui/widget/infomessage")
 local InputDialog = require("ui/widget/inputdialog")
 local LuaSettings = require("luasettings")
@@ -23,13 +24,27 @@ local URL_FILE = DATA_DIR .. "/url"
 local INTERVAL_FILE = DATA_DIR .. "/interval_minutes"
 local BACKGROUND_FLAG = DATA_DIR .. "/background-enabled"
 local HELPER_DIR = "/mnt/us/extensions/token-on-kindle"
-local HELPER_ENABLE = HELPER_DIR .. "/bin/enable.sh"
-local HELPER_DISABLE = HELPER_DIR .. "/bin/disable.sh"
-local HELPER_START = HELPER_DIR .. "/bin/start.sh"
-local HELPER_MIRROR = HELPER_DIR .. "/bin/mirror-linkss.sh"
+local HELPER_BIN = HELPER_DIR .. "/bin"
+local HELPER_ENABLE = HELPER_BIN .. "/enable.sh"
+local HELPER_DISABLE = HELPER_BIN .. "/disable.sh"
+local HELPER_START = HELPER_BIN .. "/start.sh"
+local HELPER_MIRROR = HELPER_BIN .. "/mirror-linkss.sh"
 local HELPER_PID = DATA_DIR .. "/scheduler.pid"
 local HELPER_LOG = DATA_DIR .. "/scheduler.log"
+local HELPER_VERSION_FILE = HELPER_DIR .. "/.token-on-kindle-bundle-version"
+local HELPER_BUNDLE_VERSION = "1"
 local LINKSS_DIR = "/mnt/us/linkss/screensavers"
+
+local HELPER_FILES = {
+    "menu.json",
+    "bin/common.sh",
+    "bin/mirror-linkss.sh",
+    "bin/update.sh",
+    "bin/scheduler.sh",
+    "bin/start.sh",
+    "bin/enable.sh",
+    "bin/disable.sh",
+}
 
 local TokenOnKindle = WidgetContainer:extend{
     name = "token_on_kindle",
@@ -124,6 +139,7 @@ function TokenOnKindle:init()
     end
     self.settings:flush()
 
+    self:installBundledHelper(false)
     self:syncHelperConfig()
 
     if self.settings:isTrue("use_sleep_screen") and isPng(OUTPUT_FILE) then
@@ -148,6 +164,59 @@ function TokenOnKindle:getIntervalMinutes()
         minutes = 5
     end
     return math.floor(minutes)
+end
+
+function TokenOnKindle:installBundledHelper(show_result)
+    local bundle_root = self.path and (self.path .. "/kindle-helper") or nil
+    if not bundle_root or not isFile(bundle_root .. "/menu.json") then
+        if show_result then
+            self:showMessage(_("The bundled Kindle helper could not be found inside the plugin."))
+        end
+        return false
+    end
+
+    if readTextFile(HELPER_VERSION_FILE) == HELPER_BUNDLE_VERSION
+        and isFile(HELPER_ENABLE)
+        and isFile(HELPER_START) then
+        if show_result then
+            self:showMessage(_("The Kindle sleep-refresh helper is already up to date."), 2)
+        end
+        return true
+    end
+
+    if not ensureDirectory("/mnt/us/extensions")
+        or not ensureDirectory(HELPER_DIR)
+        or not ensureDirectory(HELPER_BIN) then
+        if show_result then
+            self:showMessage(_("Could not create the Kindle helper directory."))
+        end
+        return false
+    end
+
+    for _, relative_path in ipairs(HELPER_FILES) do
+        local source = bundle_root .. "/" .. relative_path
+        local target = HELPER_DIR .. "/" .. relative_path
+        local copy_error = FFIUtil.copyFile(source, target)
+        if copy_error then
+            logger.warn("TokenOnKindle: helper copy failed:", relative_path, copy_error)
+            if show_result then
+                self:showMessage(
+                    _("Could not install the Kindle helper:") .. "\n" .. tostring(copy_error)
+                )
+            end
+            return false
+        end
+    end
+
+    local ok, version_error = writeTextFile(HELPER_VERSION_FILE, HELPER_BUNDLE_VERSION)
+    if not ok then
+        logger.warn("TokenOnKindle: could not write helper version:", version_error)
+    end
+
+    if show_result then
+        self:showMessage(_("Kindle sleep-refresh helper installed."), 2)
+    end
+    return true
 end
 
 function TokenOnKindle:syncHelperConfig()
@@ -361,8 +430,7 @@ end
 
 function TokenOnKindle:setBackgroundRefreshEnabled(enabled)
     if enabled then
-        if not isFile(HELPER_ENABLE) then
-            self:showMessage(_("The Kindle background helper is not installed. Install the Token on Kindle Kindle-helper package first."))
+        if not isFile(HELPER_ENABLE) and not self:installBundledHelper(true) then
             return
         end
         self:syncHelperConfig()
@@ -471,7 +539,7 @@ function TokenOnKindle:addToMainMenu(menu_items)
                 text = _("Refresh while Kindle sleeps"),
                 keep_menu_open = true,
                 enabled_func = function()
-                    return isFile(HELPER_ENABLE) or self:isBackgroundRefreshEnabled()
+                    return isFile(HELPER_ENABLE) or isFile(self.path .. "/kindle-helper/menu.json")
                 end,
                 checked_func = function()
                     return self:isBackgroundRefreshEnabled()
@@ -501,6 +569,13 @@ function TokenOnKindle:addToMainMenu(menu_items)
                         callback = function() self:setInterval(60) end,
                     },
                 },
+            },
+            {
+                text = _("Install / repair sleep helper"),
+                keep_menu_open = true,
+                callback = function()
+                    self:installBundledHelper(true)
+                end,
             },
             {
                 text = _("Status"),
