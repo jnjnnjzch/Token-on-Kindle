@@ -2,5 +2,5 @@ local _ = require("gettext")
 
 return {
     fullname = _("Token on Kindle"),
-    description = _("Downloads the Token on Kindle dashboard and uses it as the KOReader sleep screen. Can also mirror the image to the Kindle linkss screensaver folder."),
+    description = _("Keeps the Token on Kindle dashboard as the KOReader sleep screen and can refresh it during suspend without depending on Amazon's framework."),
 }
