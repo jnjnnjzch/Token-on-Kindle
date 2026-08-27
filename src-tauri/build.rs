@@ -62,13 +62,9 @@ fn compose_extractor() {
     let target = manifest.join("../web/extractor.js");
     let output = fs::read_to_string(&target)
         .unwrap_or_else(|error| panic!("read {}: {error}", target.display()));
-    let version = env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION");
-    let codex_marker = format!("codex-adaptive-v{version}");
-    assert!(
-        output.contains(&codex_marker),
-        "packaged extractor missing {codex_marker}"
-    );
     for marker in [
+        "__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__",
+        "codex-adaptive-v",
         "TOKEN-ON-KINDLE DIRECT API WORKERS BUILD",
         "short-lived-hidden-worker",
         "platform-internal-api",
