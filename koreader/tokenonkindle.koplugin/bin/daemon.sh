@@ -54,12 +54,6 @@ paint_cached_screen() {
         log "Suspend paint skipped: eips not found"
         return 0
     fi
-
-    # readyToSuspend is itself the authoritative signal that the Kindle is about
-    # to enter suspend. Do not wait for powerd's textual state to change to
-    # "Screen Saver": on older Kindles that can happen after this event. KOReader
-    # follows the same ordering internally: draw the sleep screen first, then
-    # hand off to powerd for suspend.
     eips -f -g "$OUTPUT_FILE" >/dev/null 2>&1 || true
     log "Cached dashboard painted at readyToSuspend"
 }
