@@ -46,6 +46,23 @@ fn ensure_icons() {
     write_if_changed(&icon_dir.join("icon.png"), png);
 }
 
+fn codex_reader_marker(source: &str) -> String {
+    const PREFIX: &str = "window.__TOKEN_ON_KINDLE_CODEX_ADAPTIVE_READER__ = '";
+    let tail = source
+        .split_once(PREFIX)
+        .expect("Codex reader marker assignment")
+        .1;
+    let marker = tail
+        .split_once("';")
+        .expect("Codex reader marker terminator")
+        .0;
+    assert!(
+        marker.starts_with("codex-adaptive-v"),
+        "unexpected Codex reader marker: {marker}"
+    );
+    marker.to_string()
+}
+
 fn compose_extractor() {
     let manifest = manifest_dir();
     let script = manifest.join("../tools/compose-extractor.mjs");
@@ -62,11 +79,13 @@ fn compose_extractor() {
     let target = manifest.join("../web/extractor.js");
     let output = fs::read_to_string(&target)
         .unwrap_or_else(|error| panic!("read {}: {error}", target.display()));
-    let version = env::var("CARGO_PKG_VERSION").expect("CARGO_PKG_VERSION");
-    let codex_marker = format!("codex-adaptive-v{version}");
+    let codex_source_path = manifest.join("../web/codex-direct-reader.js");
+    let codex_source = fs::read_to_string(&codex_source_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", codex_source_path.display()));
+    let codex_marker = codex_reader_marker(&codex_source);
     assert!(
         output.contains(&codex_marker),
-        "packaged extractor missing {codex_marker}"
+        "packaged extractor missing source Codex marker {codex_marker}"
     );
     for marker in [
         "TOKEN-ON-KINDLE DIRECT API WORKERS BUILD",
