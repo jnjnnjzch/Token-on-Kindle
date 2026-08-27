@@ -78,7 +78,6 @@ function TokenOnKindle:isConfigured()
     local url = self:getUrl()
     return type(url) == "string"
         and url ~= ""
-        and url ~= DEFAULT_URL
         and url:match("^https?://") ~= nil
 end
 
