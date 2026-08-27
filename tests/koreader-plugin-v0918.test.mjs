@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const helperRoot = 'koreader/tokenonkindle.koplugin/kindle-helper';
 
 const plugin = read('koreader/tokenonkindle.koplugin/main.lua');
-const helperCommon = read('kindle/extensions/token-on-kindle/bin/common.sh');
-const helperUpdate = read('kindle/extensions/token-on-kindle/bin/update.sh');
-const helperMirror = read('kindle/extensions/token-on-kindle/bin/mirror-linkss.sh');
-const helperScheduler = read('kindle/extensions/token-on-kindle/bin/scheduler.sh');
-const helperEnable = read('kindle/extensions/token-on-kindle/bin/enable.sh');
-const helperDisable = read('kindle/extensions/token-on-kindle/bin/disable.sh');
-const helperMenu = read('kindle/extensions/token-on-kindle/menu.json');
+const helperCommon = read(`${helperRoot}/bin/common.sh`);
+const helperUpdate = read(`${helperRoot}/bin/update.sh`);
+const helperMirror = read(`${helperRoot}/bin/mirror-linkss.sh`);
+const helperScheduler = read(`${helperRoot}/bin/scheduler.sh`);
+const helperStart = read(`${helperRoot}/bin/start.sh`);
+const helperEnable = read(`${helperRoot}/bin/enable.sh`);
+const helperDisable = read(`${helperRoot}/bin/disable.sh`);
+const helperMenu = read(`${helperRoot}/menu.json`);
 
 test('KOReader foreground plugin cannot shadow gettext with HTTP response headers', () => {
   assert.match(plugin, /local request_ok, ok, code, response_headers, status = pcall\(http\.request/);
@@ -37,6 +40,14 @@ test('KOReader Lua layer does not pretend it can schedule work through suspend',
   assert.doesNotMatch(plugin, /UIManager:scheduleIn/);
   assert.doesNotMatch(plugin, /scheduleNextSync/);
   assert.match(plugin, /The KOReader event loop stops while the Kindle is suspended/);
+});
+
+test('KOReader plugin bundles and self-installs its Kindle helper', () => {
+  assert.match(plugin, /self\.path \.\. "\/kindle-helper"/);
+  assert.match(plugin, /FFIUtil\.copyFile\(source, target\)/);
+  assert.match(plugin, /HELPER_BUNDLE_VERSION/);
+  assert.match(plugin, /Install \/ repair sleep helper/);
+  assert.match(plugin, /\/mnt\/us\/extensions\/token-on-kindle/);
 });
 
 test('sleep helper uses powerd RTC events instead of a busy polling loop', () => {
@@ -69,13 +80,26 @@ test('linkss mirror follows linkss device sizing and eips PNG8 requirements', ()
   assert.match(helperUpdate, /eips -f -g/);
 });
 
-test('helper lifecycle is persistent, idempotent, and user controllable', () => {
+test('helper stays in user storage and remains idempotent/user controllable', () => {
   assert.match(helperCommon, /background-enabled/);
-  assert.match(helperEnable, /token-on-kindle\.conf/);
-  assert.match(helperEnable, /mntroot rw/);
+  assert.match(helperStart, /pid_is_alive/);
+  assert.match(helperEnable, /touch "\$ENABLED_FILE"/);
   assert.match(helperDisable, /rm -f "\$ENABLED_FILE"/);
+  assert.doesNotMatch(helperEnable, /mntroot|\/etc\/upstart/);
   assert.doesNotThrow(() => JSON.parse(helperMenu));
   assert.match(helperMenu, /Refresh dashboard now/);
   assert.match(helperMenu, /Enable sleep refresh/);
   assert.match(helperMenu, /Disable sleep refresh/);
+});
+
+test('all bundled Kindle helper scripts pass POSIX shell syntax check', () => {
+  const scripts = [
+    'common.sh', 'mirror-linkss.sh', 'update.sh', 'scheduler.sh',
+    'start.sh', 'enable.sh', 'disable.sh',
+  ];
+  for (const script of scripts) {
+    const path = new URL(`../${helperRoot}/bin/${script}`, import.meta.url);
+    const result = spawnSync('sh', ['-n', path.pathname], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `${script}: ${result.stderr || result.stdout}`);
+  }
 });
